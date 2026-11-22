@@ -22,6 +22,14 @@ def main():
                 page.on("console",lambda m:errors.append(m.text) if m.type=="error" else None)
                 page.goto(file.resolve().as_uri(),wait_until="load")
                 page.wait_for_timeout(250)
+                # Do not report not-yet-loaded lazy images as broken: trigger decoding
+                # explicitly before evaluating image geometry at each viewport.
+                page.evaluate("""async () => {
+                    const images = Array.from(document.images);
+                    images.forEach(img => { img.loading = 'eager'; });
+                    await Promise.all(images.map(img => img.decode().catch(() => null)));
+                }""")
+                page.evaluate("window.scrollTo(0,0)")
                 state=page.evaluate("""() => ({
                     width: innerWidth,
                     scrollWidth: document.documentElement.scrollWidth,
