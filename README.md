@@ -1,11 +1,11 @@
 # Redis 源码解析：从字节到集群
-> 28 个章节的 Redis 源码阅读路线。前 5 章已按 Redis **7.2.4** 重写；其余 23 章保留并等待逐篇技术审计。
+> 28 个章节的 Redis 源码阅读路线。前 10 章已按 Redis **7.2.4** 重写；其余 18 章保留并等待逐篇技术审计。
 
 **课程入口**：[GitHub Pages](https://1998x-stack.github.io/redis-source-analysis-tutorial/) · [仓库](https://github.com/1998x-stack/redis-source-analysis-tutorial)
 
 ## 阅读路线
-1. **01–05 基础机制**：服务器运行图、构建与调试、内存分配、SDS、listpack/quicklist。每篇含独立 SVG 与源码证据。
-2. **06–16 数据结构与请求执行**：字典、跳表、对象、事件循环、网络及命令路由（历史内容，待第二轮核验）。
+1. **01–10 基础机制**：服务器运行图、构建与调试、内存分配、SDS、listpack/quicklist。每篇含独立 SVG、交互示例与源码证据。
+2. **11–16 数据结构与请求执行**：字典、跳表、对象、事件循环、网络及命令路由（历史内容，待第二轮核验）。
 3. **17–28 持久化与工程实践**：复制、集群、性能定位、Lua/模块及版本演进（历史内容，待第二轮核验）。
 
 ## 仓库结构
@@ -16,13 +16,13 @@
 │   ├── index.html                  # 阅读首页 / 学习路径 / 全部 28 章
 │   ├── catalog.json                # 课程清单及 QA 状态
 │   ├── chapters/NN.html            # 28 篇独立文章
-│   ├── chapters/theme.css          # 06–28 历史文章兼容样式
+│   ├── chapters/theme.css          # 11–28 历史文章兼容样式
 │   └── assets/{css,js,svg}/        # 共享排版、交互、专业矢量图
 ├── scripts/validate_site.py        # 无依赖的本地完整性检查
 └── .github/workflows/             # CI + GitHub Pages 部署
 ```
 
-根目录与 `docs/01.html`～`docs/28.html` 设兼容重定向，避免旧链接失效。原有 HTML 正文在 `docs/chapters/` 保留，06–28 未被伪装成已重构版本。
+根目录与 `docs/01.html`～`docs/28.html` 设兼容重定向，避免旧链接失效。原有 HTML 正文在 `docs/chapters/` 保留，11–28 未被伪装成已重构版本。
 
 ## 本地阅读与检查
 ```bash

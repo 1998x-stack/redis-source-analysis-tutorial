@@ -1,0 +1,33 @@
+{
+  "chapter": "07",
+  "version": "7.2.4",
+  "code": [
+    {
+      "source": "src/t_zset.c",
+      "symbols": [
+        "zslRandomLevel",
+        "zslInsert",
+        "zslGetRank",
+        "zsetConvert"
+      ],
+      "claim": "p=.25, max level 32, internal rank is 1-based"
+    },
+    {
+      "source": "src/intset.c",
+      "symbols": [
+        "intsetSearch",
+        "intsetUpgradeAndAdd"
+      ],
+      "claim": "sorted array binary search and width upgrade"
+    },
+    {
+      "source": "src/t_set.c",
+      "symbols": [
+        "setTypeCreate",
+        "setTypeAddAux"
+      ],
+      "claim": "Set may be intset/listpack/HT"
+    }
+  ],
+  "test": "shell demo not executed in tool environment"
+}

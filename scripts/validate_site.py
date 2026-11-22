@@ -22,7 +22,7 @@ class Tags(HTMLParser):
 def check_file(path, errors):
     text=path.read_text(encoding="utf-8")
     parser=Tags();parser.feed(text)
-    if path.name != "index.html" and path.parent.name == "chapters" and int(path.stem)<=5:
+    if path.name != "index.html" and path.parent.name == "chapters" and int(path.stem)<=10:
         if parser.h1!=1:errors.append(f"{path}: expected exactly one h1; got {parser.h1}")
         for required in ("<main","<article","<section","<figure"):
             if required not in text: errors.append(f"{path}: missing {required}")

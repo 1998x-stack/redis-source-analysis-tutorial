@@ -1,0 +1,27 @@
+{
+  "chapter": "08",
+  "version": "7.2.4",
+  "code": [
+    {
+      "source": "src/server.h",
+      "symbols": [
+        "redisObject",
+        "OBJ_ENCODING_LISTPACK",
+        "OBJ_ENCODING_QUICKLIST"
+      ],
+      "claim": "24bit lru dual-purpose; list encodings"
+    },
+    {
+      "source": "src/object.c",
+      "symbols": [
+        "createEmbeddedStringObject",
+        "createRawStringObject",
+        "createStringObject",
+        "tryObjectEncoding",
+        "makeObjectShared"
+      ],
+      "claim": "44-byte string creation threshold and refcount sentinel"
+    }
+  ],
+  "test": "shell demo not executed in tool environment"
+}
