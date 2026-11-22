@@ -250,7 +250,7 @@ def main():
         manifest_text = wait_until(rewrite_done, 40)
         base_line = next(
             (line for line in manifest_text.splitlines()
-             if line.startswith("file ") and " type a" in line),
+             if line.startswith("file ") and ".base.aof" in line),
             None,
         )
         assert base_line, manifest_text
