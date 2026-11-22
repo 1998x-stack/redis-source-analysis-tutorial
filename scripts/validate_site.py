@@ -176,7 +176,8 @@ def main():
             root = ET.parse(path).getroot()
             if not root.tag.endswith("svg") or not root.attrib.get("viewBox"):
                 errors.append(f"SVG lacks viewBox: {path}")
-            if root.attrib.get("xmlns") != "http://www.w3.org/2000/svg":
+            # ElementTree expands xmlns into Clark notation and removes it from attrib.
+            if not root.tag.startswith("{http://www.w3.org/2000/svg}"):
                 errors.append(f"SVG lacks standard namespace: {path}")
             if not any(child.tag.endswith("title") for child in root):
                 errors.append(f"SVG lacks title: {path}")

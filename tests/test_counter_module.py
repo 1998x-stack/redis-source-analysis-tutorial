@@ -39,8 +39,8 @@ def wait_until(fn, seconds=20):
             last = fn()
             if last:
                 return last
-        except (OSError, subprocess.TimeoutExpired):
-            pass
+        except (OSError, subprocess.TimeoutExpired, AssertionError) as exc:
+            last = str(exc)
         time.sleep(0.05)
     raise AssertionError(f"timeout; last={last}")
 
@@ -84,6 +84,28 @@ def read_reply(stream):
     raise AssertionError(f"unsupported RESP prefix {prefix!r}")
 
 
+def wait_for_server(proc, log, port_number, seconds=20):
+    deadline = time.time() + seconds
+    last = None
+    while time.time() < deadline:
+        if proc.poll() is not None:
+            log.flush()
+            log_path = Path(log.name)
+            details = log_path.read_text(encoding="utf-8", errors="replace")
+            raise AssertionError(
+                f"redis-server exited with {proc.returncode} before PING became ready:\n{details}"
+            )
+        try:
+            if cli(port_number, "PING") == "PONG":
+                return
+        except (OSError, subprocess.TimeoutExpired, AssertionError) as exc:
+            last = str(exc)
+        time.sleep(0.05)
+    log.flush()
+    details = Path(log.name).read_text(encoding="utf-8", errors="replace")
+    raise AssertionError(f"redis-server readiness timeout; last={last}\n{details}")
+
+
 def start(directory: Path, port_number: int, aof: bool, rdb_preamble=True):
     directory.mkdir(parents=True, exist_ok=True)
     args = [
@@ -103,7 +125,7 @@ def start(directory: Path, port_number: int, aof: bool, rdb_preamble=True):
     log = open(directory / "redis.log", "w")
     proc = subprocess.Popen(args, stdout=log, stderr=subprocess.STDOUT)
     try:
-        wait_until(lambda: cli(port_number, "PING") == "PONG")
+        wait_for_server(proc, log, port_number)
     except Exception:
         proc.terminate()
         try:
