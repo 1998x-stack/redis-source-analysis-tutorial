@@ -1,0 +1,44 @@
+{
+  "chapter": "24",
+  "source_version": "redis/redis@7.2.4",
+  "source_files": [
+    {
+      "path": "src/object.c",
+      "url": "https://github.com/redis/redis/blob/7.2.4/src/object.c"
+    },
+    {
+      "path": "src/lazyfree.c",
+      "url": "https://github.com/redis/redis/blob/7.2.4/src/lazyfree.c"
+    },
+    {
+      "path": "src/evict.c",
+      "url": "https://github.com/redis/redis/blob/7.2.4/src/evict.c"
+    },
+    {
+      "path": "src/rdb.c",
+      "url": "https://github.com/redis/redis/blob/7.2.4/src/rdb.c"
+    },
+    {
+      "path": "src/server.c",
+      "url": "https://github.com/redis/redis/blob/7.2.4/src/server.c"
+    }
+  ],
+  "symbols": [
+    "objectComputeSize",
+    "memoryCommand",
+    "freeObjAsync",
+    "lazyfreeGetFreeEffort",
+    "getMaxmemoryState",
+    "performEvictions",
+    "rdbSaveBackground"
+  ],
+  "verified_claims": [
+    "Bigkey and hotkey are orthogonal properties",
+    "MEMORY USAGE samples complex objects and SAMPLES 0 can be expensive",
+    "UNLINK removes keyspace entry immediately but may free synchronously or via BIO depending object cost",
+    "fork COW is additional memory outside Redis maxmemory resource budget"
+  ],
+  "source_validation": "Pinned GitHub source and official Redis docs reviewed. All diagrams authored as source-anchored mechanism illustrations.",
+  "runtime_validation": "PASS in pinned Redis 7.2.4 CI runtime: MEMORY USAGE SAMPLES 0, HLEN and UNLINK/EXISTS. No production THP, OOM, sustained hotkey or fork stress test.",
+  "runtime_ci_url": "https://github.com/1998x-stack/redis-source-analysis-tutorial/actions/runs/45039944806"
+}

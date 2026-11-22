@@ -1,0 +1,35 @@
+{
+  "chapter": "23",
+  "source_version": "redis/redis@7.2.4",
+  "source_files": [
+    {
+      "path": "src/server.c",
+      "url": "https://github.com/redis/redis/blob/7.2.4/src/server.c"
+    },
+    {
+      "path": "src/slowlog.c",
+      "url": "https://github.com/redis/redis/blob/7.2.4/src/slowlog.c"
+    },
+    {
+      "path": "src/latency.c",
+      "url": "https://github.com/redis/redis/blob/7.2.4/src/latency.c"
+    }
+  ],
+  "symbols": [
+    "genRedisInfoString",
+    "trackInstantaneousMetric",
+    "slowlogPushEntryIfNeeded",
+    "latencyAddSample",
+    "latencyCommand",
+    "serverCron"
+  ],
+  "verified_claims": [
+    "INFO metrics include cumulative counters and rolling rates",
+    "SLOWLOG measures command execution excluding network I/O and uses microseconds",
+    "LATENCY threshold is milliseconds and event series stores per-second maximum with limited samples",
+    "P99 observed at client is not equivalent to server command duration"
+  ],
+  "source_validation": "Pinned GitHub source and official Redis docs reviewed. All diagrams authored as source-anchored mechanism illustrations.",
+  "runtime_validation": "PASS in pinned Redis 7.2.4 CI runtime: INFO counters, slowlog threshold and entries, latency-monitor config. No synthetic P99 incident or perf sampling.",
+  "runtime_ci_url": "https://github.com/1998x-stack/redis-source-analysis-tutorial/actions/runs/45039944806"
+}

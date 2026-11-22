@@ -1,0 +1,37 @@
+{
+  "chapter": "21",
+  "source_version": "redis/redis@7.2.4",
+  "source_files": [
+    {
+      "path": "src/replication.c",
+      "url": "https://github.com/redis/redis/blob/7.2.4/src/replication.c"
+    },
+    {
+      "path": "src/server.h",
+      "url": "https://github.com/redis/redis/blob/7.2.4/src/server.h"
+    },
+    {
+      "path": "src/networking.c",
+      "url": "https://github.com/redis/redis/blob/7.2.4/src/networking.c"
+    }
+  ],
+  "symbols": [
+    "replconfCommand",
+    "replicationSendAck",
+    "refreshGoodSlavesCount",
+    "checkGoodReplicasStatus",
+    "replicationHandleMasterDisconnection",
+    "replicationCacheMaster",
+    "replicationCron",
+    "replicationFeedSlaves"
+  ],
+  "verified_claims": [
+    "REPLCONF ACK is applied replication byte offset, not disk fsync",
+    "min-replicas write gate counts online replicas with recent ACK, while WAIT checks client write offset",
+    "Redis 7.2.4 uses shared replication blocks rather than standalone array backlog",
+    "cascading replicas forward upstream stream, not generate a fresh independent history"
+  ],
+  "source_validation": "Pinned GitHub source and official Redis docs reviewed. All diagrams authored as source-anchored mechanism illustrations.",
+  "runtime_validation": "PASS in pinned Redis 7.2.4 CI runtime: live primary/replica, SET+WAIT on same connection, replica key visible. Cascading latency and failover not exercised.",
+  "runtime_ci_url": "https://github.com/1998x-stack/redis-source-analysis-tutorial/actions/runs/45039944806"
+}

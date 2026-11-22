@@ -1,0 +1,37 @@
+{
+  "chapter": "22",
+  "source_version": "redis/redis@7.2.4",
+  "source_files": [
+    {
+      "path": "src/sentinel.c",
+      "url": "https://github.com/redis/redis/blob/7.2.4/src/sentinel.c"
+    },
+    {
+      "path": "src/cluster.c",
+      "url": "https://github.com/redis/redis/blob/7.2.4/src/cluster.c"
+    },
+    {
+      "path": "src/cluster.h",
+      "url": "https://github.com/redis/redis/blob/7.2.4/src/cluster.h"
+    }
+  ],
+  "symbols": [
+    "sentinelCheckSubjectivelyDown",
+    "sentinelCheckObjectivelyDown",
+    "sentinelGetLeader",
+    "sentinelSelectSlave",
+    "sentinelFailoverStateMachine",
+    "keyHashSlot",
+    "clusterCron",
+    "clusterHandleSlaveFailover"
+  ],
+  "verified_claims": [
+    "ODOWN quorum differs from leader majority-and-quorum requirement",
+    "Sentinel and Cluster use distinct failure detectors and voter populations",
+    "Cluster uses crc16 on first nonempty hash tag masked by 0x3fff",
+    "ASK on migration is temporary; MOVED updates stable slot routing"
+  ],
+  "source_validation": "Pinned GitHub source and official Redis docs reviewed. All diagrams authored as source-anchored mechanism illustrations.",
+  "runtime_validation": "PASS in pinned Redis 7.2.4 CI runtime: single Sentinel quorum=2 yields NOQUORUM; hash-tag CRC16 invariant. Three-Sentinel failover and live Cluster reshard not exercised.",
+  "runtime_ci_url": "https://github.com/1998x-stack/redis-source-analysis-tutorial/actions/runs/45039944806"
+}

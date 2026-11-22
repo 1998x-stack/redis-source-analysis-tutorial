@@ -1,0 +1,21 @@
+name: Redis 7.2.4 runtime smoke
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch fixed Redis 7.2.4 source
+        run: |
+          git clone --depth 1 --branch 7.2.4 https://github.com/redis/redis.git /tmp/redis-724
+          git -C /tmp/redis-724 describe --tags --exact-match
+      - name: Build debug-compatible Redis binary
+        run: make -C /tmp/redis-724 -j2 MALLOC=libc OPTIMIZATION=-O0
+      - name: Redis integration smoke tests
+        run: python3 scripts/redis_724_smoke.py /tmp/redis-724/src
