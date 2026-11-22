@@ -45,6 +45,23 @@ def wait_until(fn, seconds=20):
     raise AssertionError(f"timeout; last={last}")
 
 
+def wait_for_aof_ready(port_number, directory: Path):
+    manifest = directory / "appendonlydir" / "appendonly.aof.manifest"
+
+    def ready():
+        if not manifest.exists():
+            return None
+        info = cli(port_number, "INFO", "persistence")
+        if (
+            "aof_rewrite_in_progress:0" in info
+            and "aof_last_bgrewrite_status:ok" in info
+        ):
+            return manifest.read_text(encoding="utf-8")
+        return None
+
+    return wait_until(ready, 40)
+
+
 def encode(*args):
     values = [arg if isinstance(arg, bytes) else str(arg).encode() for arg in args]
     frame = b"*" + str(len(values)).encode() + b"\r\n"
@@ -126,6 +143,14 @@ def start(directory: Path, port_number: int, aof: bool, rdb_preamble=True):
     proc = subprocess.Popen(args, stdout=log, stderr=subprocess.STDOUT)
     try:
         wait_for_server(proc, log, port_number)
+        if aof:
+            expected_preamble = "yes" if rdb_preamble else "no"
+            config = cli(port_number, "CONFIG", "GET", "aof-use-rdb-preamble")
+            if config.splitlines()[-1] != expected_preamble:
+                raise AssertionError(f"unexpected aof-use-rdb-preamble: {config}")
+            # A new appendonly directory can trigger an initial bootstrap rewrite.
+            # Wait for that child before taking the manifest snapshot for our test rewrite.
+            wait_for_aof_ready(port_number, directory)
     except Exception:
         proc.terminate()
         try:
@@ -200,6 +225,7 @@ def main():
 
         manifest = directory / "appendonlydir" / "appendonly.aof.manifest"
         before_manifest = manifest.read_text(encoding="utf-8")
+        assert "type i" in before_manifest
         assert "type i" in before_manifest
 
         cli(port_number, "BGREWRITEAOF")
