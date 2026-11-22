@@ -21,7 +21,7 @@ if (force / prevent flags apply)
 alsoPropagate(dbid, argv, argc, propagate_flags);
 /* outer execution unit */
 postExecutionUnitOperations();</code></pre><p>不要把“命令 handler 返回 OK”“客户端收到回复”“AOF 已 fsync”“副本已应用命令”当成同一个确认点。</p></section><section id="experiment" aria-labelledby="h-experiment"><h2 id="h-experiment">本地实验：观察 QUEUED、EXEC 与命令统计</h2><p>在隔离 Redis 7.2.4 实例上执行。第一段在一个客户端里观察事务队列，第二段在另一个终端查看命令统计。若需要观察实际客户端命令，可以再打开一个终端运行 <code>MONITOR</code>；不要在生产实例长期开启 MONITOR。</p><pre><code>tmp=$(mktemp -d)
-./src/redis-server --bind 127.0.0.1 --port 6390 --dir &quot;$tmp&quot; \\
+./src/redis-server --bind 127.0.0.1 --port 6390 --dir &quot;$tmp&quot; \
   --daemonize yes --pidfile &quot;$tmp/redis.pid&quot; --save &quot;&quot; --appendonly no
 
 # 所有事务命令经由同一 redis-cli 连接
