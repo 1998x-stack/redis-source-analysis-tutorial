@@ -1,0 +1,32 @@
+{
+  "chapter": "20",
+  "source_version": "redis/redis@7.2.4",
+  "files": [
+    "src/replication.c",
+    "src/server.h",
+    "src/server.c"
+  ],
+  "symbols": [
+    "replicaofCommand",
+    "replicationSetMaster",
+    "replicationCron",
+    "syncCommand",
+    "replconfCommand",
+    "startBgsaveForReplication",
+    "readSyncBulkPayload",
+    "slaveTryPartialResynchronization",
+    "replicationFeedSlaves",
+    "repl_backlog",
+    "master_repl_offset"
+  ],
+  "corrections": [
+    "7.2.4 的 replicationSetMaster 签名为 replicationSetMaster(char *ip, int port)（两个参数），旧稿示例的三参形式不适用。",
+    "readSyncBulkPayload 在 7.2.4 的签名是 readSyncBulkPayload(connection *conn)，不是旧的 aeEventLoop/fd 回调签名。",
+    "slaveTryPartialResynchronization 带 (connection *conn, int read_reply) 两个参数。"
+  ],
+  "notes": [
+    "REPL_STATE_* 枚举定义在 replication.c 中；正文以概念顺序描述状态推进，未逐一定义取值。"
+  ],
+  "methods": "Source signatures and fields inspected in pinned upstream GitHub (redis/redis@7.2.4); diagrams newly authored inline as SVG.",
+  "runtime_test": "not executed; static validate.py pass and Chromium browser_check.py pass (see qa/ report)"
+}

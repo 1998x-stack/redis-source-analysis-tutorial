@@ -141,8 +141,8 @@
       "num": "20",
       "title": "主从复制：全量与增量",
       "file": "chapters/20.html",
-      "status": "legacy",
-      "version": "原稿待逐章审计"
+      "status": "rewritten",
+      "version": "Redis 7.2.4 · source-anchored deep rewrite"
     },
     {
       "num": "21",

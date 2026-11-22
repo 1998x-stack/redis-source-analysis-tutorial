@@ -1,293 +1,85 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.5, user-scalable=yes">
-    <title>第20章 主从复制（上）</title>
-    <link rel="stylesheet" href="theme.css">
-</head>
-<body>
-<div class="double-border">
-<div class="container">
-    <div class="sidebar">
-        <h3>🔧 课程目录</h3>
-        <ul class="chapter-list">
-            <li><a href="01.html">第1章 Redis源码全景图</a></li>
-            <li><a href="02.html">第2章 编译与调试环境搭建</a></li>
-            <li><a href="03.html">第3章 内存管理：zmalloc与jemalloc</a></li>
-            <li><a href="04.html">第4章 SDS动态字符串</a></li>
-            <li><a href="05.html">第5章 链表、压缩列表与listpack</a></li>
-            <li><a href="06.html">第6章 字典与渐进式rehash</a></li>
-            <li><a href="07.html">第7章 跳表与整数集合</a></li>
-            <li><a href="08.html">第8章 redisObject与编码转换</a></li>
-            <li><a href="09.html">第9章 String与Hash命令实现</a></li>
-            <li><a href="10.html">第10章 List命令与阻塞操作</a></li>
-            <li><a href="11.html">第11章 Set与Sorted Set命令实现</a></li>
-            <li><a href="12.html">第12章 Stream、Geo与HyperLogLog</a></li>
-            <li><a href="13.html">第13章 事件循环（上）：文件事件</a></li>
-            <li><a href="14.html">第14章 事件循环（下）：时间事件</a></li>
-            <li><a href="15.html">第15章 网络IO架构</a></li>
-            <li><a href="16.html">第16章 命令处理全流程</a></li>
-            <li><a href="17.html">第17章 RDB持久化</a></li>
-            <li><a href="18.html">第18章 AOF与混合持久化</a></li>
-            <li><a href="19.html">第19章 键过期与内存淘汰</a></li>
-            <li><a href="20.html" class="active">第20章 主从复制（上）</a></li>
-            <li><a href="21.html">第21章 主从复制（下）</a></li>
-            <li><a href="22.html">第22章 Sentinel哨兵与Cluster集群</a></li>
-            <li><a href="23.html">第23章 性能诊断工具链</a></li>
-            <li><a href="24.html">第24章 生产环境踩坑指南</a></li>
-            <li><a href="25.html">第25章 源码级问题定位实战</a></li>
-            <li><a href="26.html">第26章 Lua脚本与事务</a></li>
-            <li><a href="27.html">第27章 Module开发实战</a></li>
-            <li><a href="28.html">第28章 Redis 8.x前瞻与手写Mini-Redis</a></li>
-        </ul>
-    </div>
-    <div class="main-content">
+<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="按 Redis 7.2.4 固定源码解释主从复制：异步传播模型、PSYNC 握手、全量同步（BGSAVE + RDB 传输 + backlog 回放）与基于 replid/offset/backlog 的部分重同步。">
+<title>第 20 章｜主从复制（上）：全量同步与 PSYNC 部分重同步 · Redis 源码解析</title>
+<style>*,*::before,*::after{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,"PingFang SC",sans-serif;line-height:1.78;color:#1d3438;background:#fdfcf8;overflow-wrap:anywhere}svg,img{max-width:100%;height:auto}pre{overflow-x:auto;max-width:100%;white-space:pre-wrap;word-break:break-word}.table-scroll{overflow-x:auto;max-width:100%}table{border-collapse:collapse;width:100%}</style>
+<link rel="stylesheet" href="../assets/css/site.css"></head><body>
+<a class="skip-link" href="#main">跳至正文</a>
+<header class="site-head"><div class="site-head-inner"><a class="brand" href="../index.html"><span class="brand-mark">R</span>Redis / 源码图谱</a><nav class="site-links" aria-label="主要导航"><a href="../index.html#chapters">全部章节</a><a href="#sources">参考源码</a><a href="https://github.com/1998x-stack/redis-source-analysis-tutorial">GitHub</a></nav></div></header>
+<div class="article-layout">
+<aside class="article-aside" aria-label="本章目录"><a href="../index.html">← 返回首页</a><details open><summary>本章阅读路径</summary><nav class="toc-links" aria-label="正文目录">
+<a href="#problem">先说清楚问题：单节点为什么不够</a>
+<a href="#model">复制模型：一主多从、异步、最终一致</a>
+<a href="#handshake">从库连接主库：REPLICAOF 与握手</a>
+<a href="#fullsync">全量同步：BGSAVE、RDB 传输与加载</a>
+<a href="#backlog">复制积压缓冲 repl_backlog</a>
+<a href="#psync">PSYNC：什么时候能只补增量</a>
+<a href="#experiment">对照实验：搭一主一从看状态</a>
+<a href="#limits">把复制的边界讲清楚</a>
+<a href="#sources">固定版本参考</a>
+</nav></details></aside>
+<main class="article-main" id="main"><article>
+<header class="article-header"><p class="eyebrow">Chapter 20 / Redis 7.2.4 Source Anatomy</p><h1>主从复制（上）：全量同步与 PSYNC 部分重同步</h1><p class="lede">按 Redis 7.2.4 固定源码解释复制：为什么它是异步的、<code>REPLICAOF</code> 之后握手发生什么、全量同步如何用 <code>BGSAVE</code> 与 RDB 传输建立副本，以及 <code>PSYNC</code> 依据 <code>replid</code>/<code>offset</code>/<code>repl_backlog</code> 判断能否只补增量。</p><p class="reading-meta">固定源代码 Redis 7.2.4 · 问题 → 图解 → 源码 → 实验 → 边界</p></header>
+<section id="problem" aria-labelledby="h-problem"><h2 id="h-problem">先说清楚问题：单节点为什么不够</h2>
+<p>前面十几章都围绕一台服务器。但单机的机器会宕机、网络会抖、机房会断电；一旦只有一个节点，挂掉就是全站不可用。主从复制是解决冗余的第一步：把同一份数据同时放在多个节点上。</p>
+<p>它顺带带来第二个好处：多台副本可以分摊读流量，让主库专注处理写。本章回答两个具体问题：从库首次连接时到底发生了什么？断线重连时，能不能不重传全部数据？</p>
+</section>
+<section id="model" aria-labelledby="h-model"><h2 id="h-model">复制模型：一主多从、异步、最终一致</h2>
+<p>Redis 复制是一主多从：主库处理写并向外传播命令流，副本接收并重放，默认只读。它的关键特征是<strong>异步</strong>——主库执行完写命令后就回客户端，不会等副本确认。因此副本可能落后于主库，属于最终一致模型。</p>
+<p>这意味着一个必须明确的事实：<strong>主库上的写入成功，不等于副本已经收到</strong>。若主库在命令到达副本前就崩溃，这部分数据就丢了。想让客户端等副本确认，需要显式使用 <code>WAIT</code> 命令（下一章展开）。命令流向副本的入口是 <code>replicationFeedSlaves(list *slaves, int dictid, robj **argv, int argc)</code>，它把命令同时写进所有副本连接与积压缓冲。</p>
+<figure class="figure"><svg role="img" aria-labelledby="fig20-1-t" aria-describedby="fig20-1-d" viewBox="0 0 720 210" xmlns="http://www.w3.org/2000/svg"><title id="fig20-1-t">主库异步向多个副本传播命令流</title><desc id="fig20-1-d">客户端写主库，主库立即回复并把命令流通过连接与积压缓冲转发给多个副本；副本异步重放，可能落后于主库。</desc><rect width="720" height="210" rx="16" fill="#f6fbf9"/><g font-family="system-ui,sans-serif" font-size="13" text-anchor="middle"><rect x="24" y="80" width="120" height="54" rx="10" fill="#e1f4f0" stroke="#167e80"/><text x="84" y="104" fill="#1d3438">客户端写</text><text x="84" y="122" fill="#52666b">立即回复</text><rect x="230" y="70" width="150" height="74" rx="10" fill="#efecf9" stroke="#6654a7"/><text x="305" y="100" fill="#1d3438">主库 Master</text><text x="305" y="120" fill="#52666b">命令流 + backlog</text><rect x="470" y="24" width="220" height="50" rx="10" fill="#fcf0e9" stroke="#c9664a"/><text x="580" y="54" fill="#1d3438">副本 Replica 1</text><rect x="470" y="86" width="220" height="50" rx="10" fill="#fcf0e9" stroke="#c9664a"/><text x="580" y="116" fill="#1d3438">副本 Replica 2</text><rect x="470" y="148" width="220" height="42" rx="10" fill="#fff" stroke="#52666b"/><text x="580" y="174" fill="#52666b">可能落后（最终一致）</text><g stroke="#167e80" stroke-width="3" fill="none"><path d="M144 107 H230"/><path d="M380 95 L470 52"/><path d="M380 107 H470"/></g></g></svg><figcaption>图 1 · 异步传播。主库不等待副本确认，所以“写成功”与“副本已落地”是两个时间点。</figcaption></figure>
+</section>
+<section id="handshake" aria-labelledby="h-handshake"><h2 id="h-handshake">从库连接主库：REPLICAOF 与握手</h2>
+<p>在副本上执行 <code>REPLICAOF host port</code> 只是“设置主库并准备连接”，并不立即同步。<code>replicaofCommand()</code> 会调用 7.2.4 中的 <code>void replicationSetMaster(char *ip, int port)</code>（注意这里是两个参数，旧资料常写的三参形式已不适用），设置 <code>server.masterhost</code>/<code>server.masterport</code>，连接随后由每秒运行的 <code>replicationCron()</code> 发起。</p>
+<p>连接建立后需要一套握手来确定双方能力与协议。副本状态由 <code>replication.c</code> 中的 <code>REPL_STATE_*</code> 枚举推进，大致顺序为：<code>CONNECT</code> → <code>CONNECTING</code> → <code>RECEIVE_PING_REPLY</code> → <code>SEND_HANDSHAKE</code> → <code>RECEIVE_AUTH_REPLY</code>（若配置了认证）→ <code>RECEIVE_REPLCONF_REPLY</code> → <code>RECEIVE_PSYNC_REPLY</code> → <code>TRANSFER</code> → <code>CONNECTED</code>。其中 <code>REPLCONF</code> 用来上报监听端口、声明能力（如 <code>capa eof</code>、<code>capa psync2</code>）。</p>
+<pre><code># 副本向主库发出的握手序列（概念顺序）
+PING
+AUTH &lt;masterauth&gt;          # 仅在配置了主库密码时
+REPLCONF listening-port &lt;port&gt;
+REPLCONF capa eof capa psync2
+PSYNC &lt;replid&gt; &lt;offset&gt;   # 首次同步时是 PSYNC ? -1</code></pre>
+<p><code>PSYNC ? -1</code> 的含义是“我没有 replid、也不知道偏移量”，等价于请求全量同步。</p>
+</section>
+<section id="fullsync" aria-labelledby="h-fullsync"><h2 id="h-fullsync">全量同步：BGSAVE、RDB 传输与加载</h2>
+<p>主库处理 PSYNC 的入口是 <code>syncCommand(client *c)</code>。当部分重同步不可能时，它调用 <code>startBgsaveForReplication(mincapa, req)</code> 触发一次快照：可能是落盘的 <code>BGSAVE</code>，也可能是无盘复制（直接向 socket 写 RDB 流）。在此期间，主库继续服务写请求，并把新命令同时写进积压缓冲，等 RDB 发完再补发。</p>
+<p>副本侧的关键函数是 <code>readSyncBulkPayload(connection *conn)</code>：它从连接上读取 RDB 字节流（先写临时文件或直接解析），完成后先<strong>清空本地数据库</strong>（<code>emptyDb</code>），再用 <code>rdbLoad(..., RDBFLAGS_REPLICATION)</code> 加载，最后把状态置为 <code>CONNECTED</code> 并开始发送 <code>REPLCONF ACK</code> 回报偏移量。</p>
+<figure class="figure"><svg role="img" aria-labelledby="fig20-2-t" aria-describedby="fig20-2-d" viewBox="0 0 720 240" xmlns="http://www.w3.org/2000/svg"><title id="fig20-2-t">全量同步的时序</title><desc id="fig20-2-d">副本发 PSYNC ? -1，主库启动 BGSAVE 生成 RDB 并同时把新命令写入积压缓冲，副本清空并加载 RDB，随后主库补齐积压缓冲中的增量命令。</desc><rect width="720" height="240" rx="16" fill="#f6fbf9"/><g font-family="system-ui,sans-serif" font-size="12" text-anchor="middle"><rect x="30" y="24" width="300" height="40" rx="8" fill="#e1f4f0" stroke="#167e80"/><text x="180" y="49" fill="#1d3438">① 副本 PSYNC ? -1</text><rect x="390" y="24" width="300" height="40" rx="8" fill="#efecf9" stroke="#6654a7"/><text x="540" y="49" fill="#1d3438">② 主库 startBgsaveForReplication</text><rect x="390" y="84" width="300" height="40" rx="8" fill="#fcf0e9" stroke="#c9664a"/><text x="540" y="109" fill="#1d3438">③ BGSAVE 生成 RDB；新命令入 backlog</text><rect x="30" y="144" width="300" height="40" rx="8" fill="#e1f4f0" stroke="#167e80"/><text x="180" y="169" fill="#1d3438">④ 副本 emptyDb 后 rdbLoad</text><rect x="390" y="144" width="300" height="40" rx="8" fill="#efecf9" stroke="#6654a7"/><text x="540" y="169" fill="#1d3438">⑤ 补齐 backlog，状态 CONNECTED</text><text x="360" y="215" fill="#52666b">全量阶段开销大：fork + RDB 传输 + 副本清空重载</text></g></svg><figcaption>图 2 · 全量同步时序。副本在加载 RDB 前会先清空自己的数据，因此一次全量同步会把副本旧数据全部替换掉。</figcaption></figure>
+</section>
+<section id="backlog" aria-labelledby="h-backlog"><h2 id="h-backlog">复制积压缓冲 repl_backlog</h2>
+<p>部分重同步能不能成立，取决于主库有没有“记住”副本断开期间的那些命令。这就是复制积压缓冲 <code>repl_backlog</code> 的作用：它是一段固定大小的环形缓冲，保存主库最近发出的命令流。相关配置与字段包括 <code>repl-backlog-size</code>（默认 1MB）、<code>repl-backlog-ttl</code>，以及 <code>server.repl_backlog</code>、<code>server.repl_backlog_size</code>、<code>server.master_repl_offset</code>。</p>
+<p>把它想成一条不断向前推进、但只保留尾部一段的日志：副本记着自己曾同步到的偏移量，重连后只要这个偏移量仍落在缓冲区间内，缺失的字节还在，就能接着读；一旦被新的数据挤出去，就只能退回全量同步。因此<strong>积压缓冲太小 = 断线稍久就触发全量同步</strong>。</p>
+</section>
+<section id="psync" aria-labelledby="h-psync"><h2 id="h-psync">PSYNC：什么时候能只补增量</h2>
+<p>每次开始复制，主库都会有一个 40 位十六进制随机字符串作为 <code>replid</code>，标识这串数据流的身份；还有 <code>replid2</code> 用于副本被提升后再接续（PSYNC2）的场景。副本重连时发送 <code>PSYNC &lt;replid&gt; &lt;offset&gt;</code>，主库在 <code>syncCommand()</code> 中判断：</p>
+<ul><li><code>replid</code> 匹配，且 <code>offset</code> 仍在积压缓冲的窗口内 → 回复 <code>+CONTINUE</code>，只发送缺失字节。</li><li>否则 → 回复 <code>+FULLRESYNC &lt;replid&gt; &lt;offset&gt;</code>，转入全量同步。</li></ul>
+<p>副本侧负责这套判断的函数是 <code>int slaveTryPartialResynchronization(connection *conn, int read_reply)</code>。一个常见误区：以为“断线重连必然增量”。实际上只要积压缓冲已回绕、或主库经历了会改变数据流的重启，就只能全量。副本正常运行时还会周期性发送 <code>REPLCONF ACK &lt;offset&gt;</code>，主库据此记录每个副本的确认进度。</p>
+<figure class="figure"><svg role="img" aria-labelledby="fig20-3-t" aria-describedby="fig20-3-d" viewBox="0 0 720 220" xmlns="http://www.w3.org/2000/svg"><title id="fig20-3-t">积压缓冲窗口决定部分重同步是否可行</title><desc id="fig20-3-d">积压缓冲只保留命令流尾部一段，副本 offset 落在窗口内可 +CONTINUE，否则只能 +FULLRESYNC 全量同步。</title><rect width="720" height="220" rx="16" fill="#f6fbf9"/><g font-family="system-ui,sans-serif" font-size="12"><rect x="40" y="46" width="640" height="44" rx="8" fill="#efecf9" stroke="#6654a7"/><text x="60" y="73" fill="#1d3438">已丢弃（积压缓冲已回绕）</text><rect x="300" y="46" width="250" height="44" rx="8" fill="#e1f4f0" stroke="#167e80"/><text x="425" y="73" text-anchor="middle" fill="#1d3438">仍在缓冲窗口内</text><rect x="550" y="46" width="130" height="44" rx="8" fill="#fcf0e9" stroke="#c9664a"/><text x="615" y="73" text-anchor="middle" fill="#1d3438">最新</text><text x="250" y="120" fill="#167e80" text-anchor="middle">副本 offset 在此 → +CONTINUE</text><text x="180" y="150" fill="#a5462c" text-anchor="middle">offset 在左侧 → +FULLRESYNC</text><text x="620" y="120" fill="#52666b" text-anchor="middle">master_repl_offset</text><path d="M250 90 V112" stroke="#167e80" stroke-width="2.5"/><path d="M180 46 V138" stroke="#c9664a" stroke-width="2" stroke-dasharray="5 4"/></g></svg><figcaption>图 3 · 只有副本的 offset 仍处于缓冲窗口内，才可能 <code>+CONTINUE</code>；否则退回全量同步。</figcaption></figure>
+</section>
+<section id="experiment" aria-labelledby="h-experiment"><h2 id="h-experiment">对照实验：搭一主一从看状态</h2>
+<pre><code># 主库
+./src/redis-server --bind 127.0.0.1 --port 6396 --save &quot;&quot; --appendonly no --repl-backlog-size 1mb
+# 副本
+./src/redis-server --bind 127.0.0.1 --port 6397 --save &quot;&quot; --appendonly no
 
-        <h2>第20章：主从复制（上）—— 全量与部分同步</h2>
+./src/redis-cli -p 6397 REPLICAOF 127.0.0.1 6396
+./src/redis-cli -p 6396 INFO replication     # 预期 role:master, connected_slaves:1
+./src/redis-cli -p 6397 INFO replication     # 预期 role:slave, master_link_status:up
 
-        <p>大家好，我是你们的讲师。前面十几章我们一直围绕"一台 Redis 服务器"来讲解：内存管理、数据结构、命令实现、持久化、过期淘汰。但在真实的生产环境中，Redis 从来不会单枪匹马地工作。</p>
+./src/redis-cli -p 6396 SET repl:key hello
+./src/redis-cli -p 6397 GET repl:key          # 预期 hello
 
-        <p>为什么？因为单点故障是分布式系统的大敌。你的机器可能会宕机、网络可能会中断、甚至机房可能会断电。如果只有一台 Redis，无论它跑得多快，一旦挂了就是"全站瘫痪"。主从复制（Replication）就是为了解决这个问题而存在的——它让数据在多个节点之间保持一致，实现数据冗余。</p>
-
-        <p>不仅如此，主从复制还带来了读能力水平扩展：你可以在多个从库之间分摊读流量，让一台主库专注于处理写请求。今天我们就从源码层面完整剖析 Redis 的复制机制，重点理解全量同步和 PSYNC 部分同步的原理。</p>
-
-        <h2>复制架构概览</h2>
-
-        <p>Redis 的复制是<strong>典型的一主多从</strong>（Leader-Follower）架构。主库（Master）负责处理写请求，从库（Replica/Slave）从主库同步数据，对外提供只读服务。这种模型有几个核心特征：</p>
-
-        <ul>
-            <li><strong>非对称：</strong>只有主库可以写入，从库默认是只读的。</li>
-            <li><strong>异步：</strong>主库在执行写入命令后，不会等待从库确认就返回客户端。这意味着从库的数据可能落后于主库（秒级甚至更大），属于<strong>最终一致性</strong>模型。</li>
-            <li><strong>全量 + 增量：</strong>从库首次连接时触发全量同步（RDB 快照传输），后续断线重连时尝试增量同步（PSYNC）。</li>
-        </ul>
-
-        <p>复制建立的流程从一条 <code>REPLICAOF</code>（或旧版 <code>SLAVEOF</code>）命令开始：</p>
-
-        <pre><code>/* replication.c - replicaofCommand 入口 */
-void replicaofCommand(client *c) {
-    /* 解析 host 和 port */
-    /* 调用 replicationSetMaster() 设置主库信息 */
-    replicationSetMaster(c-&gt;db-&gt;id, host, port);
-    /* 这时 server.masterhost 被设定，server.master 为 NULL（尚未连接） */
-    /* 下一次 serverCron 会调用 replicationCron() 开始连接 */
-}</code></pre>
-
-        <p><code>replicationSetMaster()</code> 只是设置了 <code>server.masterhost</code> 和 <code>server.masterport</code>，实际连接是由定时任务 <code>replicationCron()</code> 发起的。这个函数每秒执行一次（由 <code>server.hz</code> 控制），检查是否需要连接或重连主库。</p>
-
-        <h2>全量同步</h2>
-
-        <p>当从库第一次连接主库，或者 PSYNC 部分同步无法进行时，就触发了<strong>全量同步</strong>（Full Sync）。全量同步是整个复制过程中代价最高的操作，我们一步一步看它发生了什么：</p>
-
-        <h3>第一步：连接建立与握手</h3>
-        <p>从库通过 <code>connectWithMaster()</code> 建立 TCP 连接，然后经过一套 PING-PONG 握手流程，确认主库可用后，发送 <code>PSYNC ? -1</code>——其中的 <code>?</code> 表示没有 replid，<code>-1</code> 表示偏移量未知，这等价于告诉主库"我需要全量同步"。</p>
-
-        <h3>第二步：主库生成 RDB</h3>
-        <p>主库收到 PSYNC 请求后，发现无法进行部分同步（因为从库没有任何历史信息），于是触发 <code>rdbSaveToSlavesSockets()</code> 或 <code>rdbSave()</code>：</p>
-
-        <pre><code>/* replication.c - 主库处理全量同步请求 */
-void replicationCron(void) {
-    /* ... 省略连接管理逻辑 ... */
-    /* 如果复本请求全量同步，主库开始 BGSAVE */
-    if (server.rdb_child_pid == -1) {
-        /* 没有 RDB 子进程在跑，启动 BGSAVE */
-        startBgsaveForReplication(c-&gt;slave_capa);
-    }
-    /* 如果已经在 BGSAVE，检查是否是给这个从库用的 */
-    /* 如果是，把这个从库加入等待列表 */
-}</code></pre>
-
-        <p>主库把自己的 RDB 子进程（<code>rdbSaveBackground()</code>）生成的快照发送给从库。如果开启了无盘复制（下一章讲），RDB 数据通过 socket 直接传输，不落盘。</p>
-
-        <h3>第三步：从库清空与加载</h3>
-        <p>从库收到 RDB 文件后，<strong>首先清空自己当前的所有数据</strong>，然后加载 RDB 文件。这是一个非常暴力的操作——如果从库上本来有 10GB 数据，一下全没了，全部替换为主库的数据。</p>
-
-        <pre><code>/* replication.c - 从库读取 RDB 的核心逻辑 */
-void readSyncBulkPayload(aeEventLoop *el, int fd, void *privdata, int mask) {
-    /* ... 读取 socket 上的 RDB 数据流 ... */
-
-    if (eof_reached) {
-        /* RDB 文件接收完毕 */
-
-        /* 1. 清空当前数据库 */
-        emptyDb(-1, EMPTYDB_NO_FLAGS, replicationEmptyDbCallback);
-
-        /* 2. 将 RDB 数据加载到内存 */
-        if (rdbLoad(ri, RDBFLAGS_REPLICATION) != C_OK) {
-            serverLog(LL_WARNING, "失败读取 RDB");
-            freeClient(c);
-            return;
-        }
-
-        /* 3. 加载完成后，从库的身份变为"在线从库" */
-        server.repl_state = REPL_STATE_CONNECTED;
-        /* 标记需要发送 ACK */
-        server.repl_send_ack = 1;
-    }
-}</code></pre>
-
-        <h3>第四步：后续数据回放</h3>
-        <p>你可能会问：主库在 BGSAVE 期间，新的写请求怎么处理？答案是通过 <strong>replication backlog 缓冲区</strong>暂存。RDB 生成完毕后，主库把 backlog 中的增量数据追加发送给从库。这样从库的数据才能"追上"主库。</p>
-
-        <p>整个全量同步期间，主库的 CPU 和磁盘 IO 消耗都非常大——子进程 fork 后，虽然用了 COW（写时复制）机制，但如果写入量大，内存页复制仍可能造成数十毫秒的延迟尖刺。</p>
-
-        <h2>PSYNC 部分重同步</h2>
-
-        <p>全量同步的开销太大了：如果从库只是断网了 5 秒钟重新连上，就要把几十 GB 的数据重新传输一遍，这显然不能忍。Redis 2.8 引入的 <strong>PSYNC</strong>（Partial SYNC）就是为了解决这个问题的。</p>
-
-        <p>PSYNC 的核心思想是：记录主库的唯一标识符（<strong>replication ID, replid</strong>）和数据流中的位置（<strong>offset</strong>），重新连接时，只需要传输从库断开期间缺失的那部分数据。</p>
-
-        <p>每个 Redis 主库在启动时都会生成一个 40 位十六进制的随机字符串作为 <code>replid</code>（replication ID）。这个 ID 唯一标识了主库的数据版本。如果主库重启后数据变了（比如清空了），<code>replid</code> 也会变更。从库在初次同步时拿到这个 ID，然后每次断线重连时，发送 <code>PSYNC &lt;replid&gt; &lt;offset&gt;</code>：</p>
-
-        <pre><code>/* replication.c - 从库发送 PSYNC */
-void slaveTryPartialResynchronization(int fd) {
-    /* 构造 PSYNC 命令 */
-    char psync_cmd[256];
-    psync_len = snprintf(psync_cmd, sizeof(psync_cmd),
-                         "PSYNC %s %lld",
-                         server.master_replid,       /* 上次同步的 replid */
-                         server.master_initial_offset); /* 上次同步的偏移量 */
-
-    /* 发送给主库 */
-    write(fd, psync_cmd, psync_len);
-    /* 等待主库响应 */
-}</code></pre>
-
-        <p>主库收到 PSYNC 命令后，在 <code>masterTryPartialResynchronization()</code> 中做判断：</p>
-
-        <pre><code>/* replication.c - 主库判断能否部分同步 */
-int masterTryPartialResynchronization(client *c) {
-    /* 1. 检查 replid 是否匹配 */
-    if (strcasecmp(c-&gt;slave_replid, server.replid) &amp;&amp;
-        strcasecmp(c-&gt;slave_replid, server.replid2)) {
-        /* replid 不匹配，必须全量同步 */
-        goto need_full_resync;
-    }
-
-    /* 2. 检查 offset 是否还在 backlog 中 */
-    if (!server.repl_backlog ||
-        c-&gt;slave_repl_offset &lt; server.repl_backlog-&gt;offset ||
-        c-&gt;slave_repl_offset &gt; (server.repl_backlog-&gt;offset +
-                                  server.repl_backlog-&gt;histlen))
-    {
-        /* offset 在 backlog 范围之外，必须全量同步 */
-        goto need_full_resync;
-    }
-
-    /* 3. 可以部分同步！从 backlog 中取出缺失数据发送 */
-    /* ... 发送 backlog 中从 offset 开始的数据 ... */
-    return C_OK;
-
-need_full_resync:
-    /* 回复 +FULLRESYNC &lt;replid&gt; &lt;offset&gt; */
-    return C_ERR;
-}</code></pre>
-
-        <p>PSYNC 的关键在于：<strong>replid 匹配且 offset 在 backlog 范围内，就能做部分同步</strong>。只要有任何一个条件不满足，就只能降级为全量同步。</p>
-
-        <h2>Backlog 机制</h2>
-
-        <p>backlog（复制积压缓冲区）是实现部分同步的核心数据结构。它是一个<strong>环形缓冲区</strong>，主库上所有写入命令的传输数据都会被写入这个缓冲区。当从库断线重连时，只要它的 offset 还在缓冲区的有效范围内，就能通过 backlog 找到缺失的数据。</p>
-
-        <pre><code>/* server.h - backlog 相关结构 */
-struct repl_backlog {
-    char *buf;              /* 环形缓冲区内存指针 */
-    long long offset;       /* backlog 中最早数据的全局偏移量 */
-    long long histlen;      /* 当前有效数据长度 */
-    long long idx;          /* 下一次写入的位置（在 buf 中的索引） */
-};
-
-/* server.h - server 结构中的相关字段 */
-struct redisServer {
-    /* ... */
-    char replid[CONFIG_RUN_ID_SIZE+1];       /* 当前 replid */
-    char replid2[CONFIG_RUN_ID_SIZE+1];      /* 上一个 replid */
-    long long master_repl_offset;             /* 当前全局复制偏移量 */
-    struct repl_backlog *repl_backlog;        /* backlog 指针 */
-    long long repl_backlog_size;              /* backlog 大小（默认 1MB） */
-    long long repl_backlog_histlen;           /* 实际有效数据长度 */
-    long long repl_backlog_idx;               /* 写指针位置 */
-    time_t repl_backlog_time_limit;           /* 无从库时保留时间 */
-    /* ... */
-};</code></pre>
-
-        <p>backlog 的大小通过 <code>repl-backlog-size</code> 配置（默认 1MB）。它是一个环形缓冲区：当写入数据超过缓冲区大小时，最早的数据会被覆盖。这正是"offset 超出范围"的本质原因——从库落后太多，它在等的那部分数据已被新数据覆盖了。</p>
-
-        <p>backlog 的写入由 <code>feedReplicationBuffer()</code> 完成，后面第21章会有详细源码分析。这里先记住它的核心特性：</p>
-
-        <ul>
-            <li>只记录<strong>命令传播</strong>的数据（即写入命令导致的数据变更），不记录全量同步时的 RDB 内容。</li>
-            <li>如果当前没有从库连接，但配置了 <code>repl-backlog-size</code>，backlog 会保留 <code>repl-backlog-ttl</code>（默认 3600 秒）后释放。</li>
-            <li>backlog 大小不能动态缩小，只能通过重启或者修改配置后 <code>CONFIG SET</code> 调整。</li>
-        </ul>
-
-        <div class="warning">
-            <strong>踩坑实录：</strong>生产环境中最常见的一个"悲剧场景"是这样的：A 团队上线了 Redis 主从架构，从库连接正常，一切似乎很完美。但某个夜晚，网络抖动导致从库断线重连——从库发送 PSYNC，请求部分同步。然而，因为 backlog 使用默认的 1MB，而主库的写入量是每秒 5MB，1MB 的缓冲区在短短 200ms 内就被新数据填满了。从库断线的 3 秒期间产生的 15MB 数据早已覆盖了它需要的部分。于是从库的 PSYNC 被拒绝，回退到全量同步。全量同步期间，主库 fork 子进程产生 10GB 的 RDB，CPU 飙升到 80%，latency 从 1ms 涨到 200ms——连锁反应导致其他从库也超时断线，然后它们也请求全量同步，形成了"复制雪崩"。
-            <br><br>
-            <strong>教训：</strong>backlog 大小要根据"业务写入峰值 × 可接受的最大断线时间"来估算。对于写密集场景（每秒上百 MB 写入），建议将 <code>repl-backlog-size</code> 设置为 100MB~512MB，确保从库断线数分钟内仍能部分同步。
-        </div>
-
-        <h2>全量同步 vs 部分同步</h2>
-
-        <p>为了帮助你直观地理解两种同步方式的差异，我们用一个对比表总结：</p>
-
-        <table>
-            <thead>
-                <tr>
-                    <th>对比维度</th>
-                    <th>全量同步（Full Sync）</th>
-                    <th>部分同步（Partial Sync）</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>触发条件</td>
-                    <td>首次连接、replid 不匹配、offset 落后超过 backlog</td>
-                    <td>断线重连，且 offset 在 backlog 范围内</td>
-                </tr>
-                <tr>
-                    <td>数据传输量</td>
-                    <td>整个数据集（GB ~ TB 级）</td>
-                    <td>仅断线期间的增量数据（KB ~ MB 级）</td>
-                </tr>
-                <tr>
-                    <td>主库开销</td>
-                    <td>fork 子进程、BGSAVE、大量磁盘 IO / 网络带宽</td>
-                    <td>直接读取 backlog 发送，几乎无额外开销</td>
-                </tr>
-                <tr>
-                    <td>从库影响</td>
-                    <td>清空所有数据，重新加载 RDB，期间不可服务</td>
-                    <td>在线接收增量数据，对服务几乎无影响</td>
-                </tr>
-                <tr>
-                    <td>耗时</td>
-                    <td>分钟~小时级（取决于数据大小和网络带宽）</td>
-                    <td>毫秒~秒级</td>
-                </tr>
-                <tr>
-                    <td>网络带宽</td>
-                    <td>极高。一次全量同步可能耗尽机房带宽</td>
-                    <td>极低。仅传输增量命令</td>
-                </tr>
-            </tbody>
-        </table>
-
-        <p>从表可以看得很清楚：<strong>全量同步是最后的无奈选择</strong>。生产环境的优化目标应该是"让 PSYNC 成功率尽可能接近 100%"——这需要通过合理配置 backlog 大小、控制网络抖动、以及使用稳定的网络基础设施来实现。</p>
-
-        <div class="tip">
-            <strong>监控指标：</strong>通过 <code>INFO replication</code> 可以看到 <code>sync_partial_ok</code> 和 <code>sync_partial_err</code> 两个计数器，分别表示部分同步成功和失败的次数。如果 <code>sync_partial_err</code> 持续增长，说明你的 backlog 太小或者网络抖动太频繁，需要针对性处理。
-        </div>
-
-        <p>基础的同步机制讲完了，但生产环境还有更复杂的场景。下一章我们继续深入主从复制的高级话题——无盘复制、级联拓扑、数据一致性保障，以及一系列关键配置参数的调优策略。我们下章见。</p>
-
-        <div class="footer-nav">
-            <a href="19.html">← 上一章</a>
-            <a href="index.html">📖 返回目录</a>
-            <a href="21.html">下一章 →</a>
-        </div>
-    </div>
-</div>
-</div>
-</body>
-</html>
+# 断开再重连，观察是全量还是增量
+./src/redis-cli -p 6397 REPLICAOF NO ONE
+./src/redis-cli -p 6397 REPLICAOF 127.0.0.1 6396
+./src/redis-cli -p 6396 INFO stats | grep -E 'sync_full|sync_partial'</code></pre>
+<p>预期观察：<code>master_link_status</code> 为 <code>up</code>；在积压缓冲未回绕且 replid 未变时，重连会记入 <code>sync_partial_ok</code>，否则记入 <code>sync_full</code>。具体数值随环境而异，仅用于对照关系，不构成性能基准。</p>
+</section>
+<section id="limits" aria-labelledby="h-limits"><h2 id="h-limits">把复制的边界讲清楚</h2>
+<ul><li><strong>异步不等于已同步</strong>：主库回复客户端不代表副本已收到；要等确认得用 <code>WAIT</code>，且仍需权衡超时。</li><li><strong>全量会清空副本</strong>：副本先 <code>emptyDb</code> 再加载 RDB，旧数据整体被替换；因此不能让副本承担“额外数据”的存储。</li><li><strong>增量不是必然</strong>：只要积压缓冲已回绕、或 <code>replid</code> 不匹配，重连就退回全量同步。</li><li><strong>积压缓冲可释放</strong>：长时间没有副本时，<code>repl-backlog-ttl</code> 之后 backlog 会被释放，重连自然全量。</li><li><strong>副本默认只读</strong>：<code>replica-read-only</code> 下写副本会报错；要转为主库需 <code>REPLICAOF NO ONE</code>。</li><li><strong>复制不含自动故障转移</strong>：主库挂了需要人工介入或 Sentinel/Cluster 来选主，这属于后续章节。</li><li><strong>版本边界</strong>：本章函数签名（<code>replicationSetMaster(char *ip, int port)</code>、<code>readSyncBulkPayload(connection *conn)</code>）均针对 <code>redis/redis@7.2.4</code>。</li></ul>
+<p>下一章继续深入：<code>WAIT</code> 如何等待确认、无盘复制如何省掉磁盘、主库如何用复制偏移量度量滞后，以及故障切换时的选主问题。</p>
+</section>
+<section class="sources" id="sources" aria-labelledby="h-sources"><h2 id="h-sources">源码与参考</h2><p>以下链接固定到 <code>redis/redis@7.2.4</code>。</p><ol><li><a href="https://github.com/redis/redis/blob/7.2.4/src/replication.c">replication.c：replicaofCommand、syncCommand、readSyncBulkPayload、slaveTryPartialResynchronization、startBgsaveForReplication</a></li><li><a href="https://github.com/redis/redis/blob/7.2.4/src/server.h">server.h：repl_backlog 与 master_repl_offset 相关字段</a></li><li><a href="https://github.com/redis/redis/blob/7.2.4/src/server.c">server.c：replicationCron 调度与 INFO replication</a></li></ol></section>
+<nav class="pager" aria-label="前后章节"><a href="19.html">← 第 19 章</a><a href="21.html">第 21 章 →</a></nav>
+</article></main></div>
+<footer class="footer"><div class="max"><a href="../index.html">返回课程主页</a></div></footer>
+<script src="../assets/js/third-article.js" defer></script>
+</body></html>
