@@ -1,0 +1,35 @@
+{
+  "chapter": "18",
+  "source_version": "redis/redis@7.2.4",
+  "files": [
+    "src/aof.c",
+    "src/aof.h",
+    "src/server.h",
+    "src/server.c"
+  ],
+  "symbols": [
+    "feedAppendOnlyFile",
+    "catAppendOnlyGenericCommand",
+    "flushAppendOnlyFile",
+    "rewriteAppendOnlyFile",
+    "rewriteAppendOnlyFileRio",
+    "rewriteAppendOnlyFileBackground",
+    "loadAppendOnlyFiles",
+    "AOF_FSYNC_NO",
+    "AOF_FSYNC_ALWAYS",
+    "AOF_FSYNC_EVERYSEC",
+    "aofManifest",
+    "AOF_MANIFEST_KEY_FILE",
+    "MANIFEST_NAME_SUFFIX"
+  ],
+  "corrections": [
+    "7.2.4 的 feedAppendOnlyFile 签名是 void feedAppendOnlyFile(int dictid, robj **argv, int argc)，不含 cmd 参数。",
+    "多部分 AOF（aofManifest / .manifest / base+incr 文件）自 Redis 7.0 起即存在，并非 8.x 新特性。",
+    "旧稿提到的 server.aof_use_threads / aofThreadWake 不属于 7.2.4；server.h 中没有这些字段。"
+  ],
+  "notes": [
+    "appendfsync 各策略的相对开销仅作定性描述，未给出固定百分比，以避免无来源指标。"
+  ],
+  "methods": "Source signatures, constants and manifest keys inspected in pinned upstream GitHub (redis/redis@7.2.4); diagrams newly authored inline as SVG.",
+  "runtime_test": "not executed; static validate.py pass and Chromium browser_check.py pass (see qa/ report)"
+}
