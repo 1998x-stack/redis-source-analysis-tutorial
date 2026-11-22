@@ -1,0 +1,35 @@
+{
+  "chapter": "16",
+  "source_version": "redis/redis@7.2.4",
+  "files": [
+    "src/networking.c",
+    "src/server.c",
+    "src/server.h",
+    "src/resp_parser.h",
+    "src/acl.c",
+    "src/multi.c",
+    "src/commands.def"
+  ],
+  "symbols": [
+    "readQueryFromClient",
+    "processInlineBuffer",
+    "processMultibulkBuffer",
+    "processInputBuffer",
+    "lookupCommand",
+    "lookupCommandLogic",
+    "populateCommandTable",
+    "struct redisCommand",
+    "processCommand",
+    "call",
+    "ACLCheckAllPerm",
+    "queueMultiCommand",
+    "ReplyParser"
+  ],
+  "corrections": [
+    "redis 7.2.4 的请求解析仍在 networking.c（processInlineBuffer/processMultibulkBuffer/processInputBuffer），src/resp_parser.c 是回调式 ReplyParser，用于解析回复字节流，并非服务端请求解析入口。",
+    "lookupCommand 在 7.2.4 的签名是按 argv/argc 查找（lookupCommand(argv,argc)），而非旧资料的 lookupCommand(sds)。",
+    "struct redisCommand 的字段是 declared_name/fullname/proc/arity/flags/key_specs 等；旧资料的 name 与 sflags 字段不再准确。"
+  ],
+  "methods": "Source symbols and check ordering inspected in pinned upstream GitHub (redis/redis@7.2.4); diagrams newly authored inline as SVG.",
+  "runtime_test": "not executed; static validate.py pass and Chromium browser_check.py pass (see qa/ report)"
+}

@@ -113,8 +113,8 @@
       "num": "16",
       "title": "命令执行全流程",
       "file": "chapters/16.html",
-      "status": "legacy",
-      "version": "原稿待逐章审计"
+      "status": "rewritten",
+      "version": "Redis 7.2.4 · source-anchored deep rewrite"
     },
     {
       "num": "17",
