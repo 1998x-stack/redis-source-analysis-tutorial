@@ -17,7 +17,7 @@
 #define MAX_EVENTS 128
 #define MAX_ARGS 64
 #define MAX_BULK (1024u * 1024u)
-#define MAX_INPUT (4u * 1024u * 1024u)
+#define MAX_QUERY_BUFFER (4u * 1024u * 1024u)
 #define MAX_OUTPUT (8u * 1024u * 1024u)
 #define INITIAL_BUCKETS 1024u
 #define READ_CHUNK 16384u
@@ -479,12 +479,12 @@ static int process_input(client *c) {
 }
 
 static int input_append(client *c, const unsigned char *data, size_t len) {
-    if (len > MAX_INPUT || c->input_len > MAX_INPUT - len) return -1;
+    if (len > MAX_QUERY_BUFFER || c->input_len > MAX_QUERY_BUFFER - len) return -1;
     size_t need = c->input_len + len;
     if (need > c->input_cap) {
         size_t cap = c->input_cap ? c->input_cap : 4096;
         while (cap < need) cap *= 2;
-        if (cap > MAX_INPUT) cap = MAX_INPUT;
+        if (cap > MAX_QUERY_BUFFER) cap = MAX_QUERY_BUFFER;
         unsigned char *p = realloc(c->input, cap);
         if (!p) return -1;
         c->input = p;
