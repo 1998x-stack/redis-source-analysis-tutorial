@@ -1,4 +1,4 @@
-name: Redis 7.2.4 runtime smoke
+name: Redis 7.2.4 runtime and teaching labs
 on:
   pull_request:
   push:
@@ -6,16 +6,24 @@ on:
 permissions:
   contents: read
 jobs:
-  smoke:
+  labs:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - name: Fetch fixed Redis 7.2.4 source
         run: |
           git clone --depth 1 --branch 7.2.4 https://github.com/redis/redis.git /tmp/redis-724
           git -C /tmp/redis-724 describe --tags --exact-match
-      - name: Build debug-compatible Redis binary
+      - name: Build Redis 7.2.4 with debug symbols
         run: make -C /tmp/redis-724 -j2 MALLOC=libc OPTIMIZATION=-O0
-      - name: Redis integration smoke tests
+      - name: Redis core integration smoke tests
         run: python3 scripts/redis_724_smoke.py /tmp/redis-724/src
+      - name: Build and test the native Module API example
+        run: |
+          cc -std=c11 -O2 -g -Wall -Wextra -Werror -fPIC -shared \
+            -I /tmp/redis-724/src -o /tmp/countermod.so \
+            examples/redis-module/counter_module.c
+          python3 tests/test_counter_module.py /tmp/redis-724/src /tmp/countermod.so
+      - name: Build and test Mini-Redis
+        run: make -C examples/mini-redis test

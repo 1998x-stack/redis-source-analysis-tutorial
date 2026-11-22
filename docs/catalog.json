@@ -183,22 +183,22 @@
       "num": "26",
       "title": "Lua 脚本与事务",
       "file": "chapters/26.html",
-      "status": "legacy",
-      "version": "原稿待逐章审计"
+      "status": "rewritten",
+      "version": "Redis 7.2.4 · source-audited / runnable lab"
     },
     {
       "num": "27",
       "title": "Module 开发实战",
       "file": "chapters/27.html",
-      "status": "legacy",
-      "version": "原稿待逐章审计"
+      "status": "rewritten",
+      "version": "Redis 7.2.4 · source-audited / runnable lab"
     },
     {
       "num": "28",
       "title": "Redis 8 与 Mini-Redis",
       "file": "chapters/28.html",
-      "status": "legacy",
-      "version": "原稿待逐章审计"
+      "status": "rewritten",
+      "version": "Redis 8.10.3 GA / 8.12-RC3 pre-release · official release cross-check"
     }
   ]
 }
