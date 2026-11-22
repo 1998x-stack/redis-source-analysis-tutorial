@@ -134,8 +134,8 @@
       "num": "19",
       "title": "键过期与内存淘汰",
       "file": "chapters/19.html",
-      "status": "legacy",
-      "version": "原稿待逐章审计"
+      "status": "rewritten",
+      "version": "Redis 7.2.4 · source-anchored deep rewrite"
     },
     {
       "num": "20",

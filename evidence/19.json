@@ -1,0 +1,32 @@
+{
+  "chapter": "19",
+  "source_version": "redis/redis@7.2.4",
+  "files": [
+    "src/db.c",
+    "src/expire.c",
+    "src/evict.c",
+    "src/server.h"
+  ],
+  "symbols": [
+    "struct redisDb",
+    "setExpire",
+    "expireIfNeeded",
+    "deleteExpiredKeyAndPropagate",
+    "activeExpireCycle",
+    "ACTIVE_EXPIRE_CYCLE_KEYS_PER_LOOP",
+    "ACTIVE_EXPIRE_CYCLE_FAST_DURATION",
+    "ACTIVE_EXPIRE_CYCLE_SLOW_TIME_PERC",
+    "ACTIVE_EXPIRE_CYCLE_ACCEPTABLE_STALE",
+    "performEvictions",
+    "evictionPoolPopulate",
+    "evictionPoolAlloc",
+    "getMaxmemoryState"
+  ],
+  "corrections": [
+    "redisDb 的主动过期游标字段是 expires_cursor，不是旧稿的 expires_slot[8]；另有 blocking_keys_unblock_on_nokey 与 cluster 用 slots_to_keys。",
+    "setExpire 在 7.2.4 的签名是 setExpire(client *c, redisDb *db, robj *key, long long when)（带 db 参数）；expireIfNeeded 带 int flags 参数。",
+    "主动过期在 src/expire.c（activeExpireCycle），不是 server.c；每轮抽样常量名为 ACTIVE_EXPIRE_CYCLE_KEYS_PER_LOOP（值 20）。"
+  ],
+  "methods": "Source struct fields, signatures and constants inspected in pinned upstream GitHub (redis/redis@7.2.4); diagrams newly authored inline as SVG.",
+  "runtime_test": "not executed; static validate.py pass and Chromium browser_check.py pass (see qa/ report)"
+}
