@@ -16,8 +16,9 @@
 ## 质量门禁
 - 静态校验扩到 1–25 章；21–25 每篇必须有 3 张 SVG、独立源码链接、至少 8 个 section（含 source）及有效交互。
 - 浏览器 Playwright Chromium：主页 + 01–25 章 × 360/390/1440，共 78 个视口；检查横向溢出、JS console、图像 decode、首页重构状态筛选、每章控制响应。
-- 本批文中 Redis 守护进程、Sentinel、GDB、perf/strace 命令尚未在真实机器的 Redis 7.2.4 二进制上执行；任何 CLI 示例输出均为期望观察、非已验证日志。
-- CI 结果、Pages 部署和合并情况须以实际 GitHub Actions 与 PR 状态为准，不应预填“通过”。
+- 已在 GitHub Actions 使用官方 `redis/redis@7.2.4` 源码编译独立 Redis 二进制，运行 `scripts/redis_724_smoke.py`：Redis 7.2.4 版本、INFO/SLOWLOG、MEMORY USAGE/UNLINK、主从复制 + 同连接 WAIT ACK、一个 Sentinel 不足以达到 quorum=2、hash tag 槽公式、RDB v11 + redis-check-rdb、Multi-Part AOF BASE/INCR manifest 均通过。验证记录：[runtime-smoke #45039944806](https://github.com/1998x-stack/redis-source-analysis-tutorial/actions/runs/45039944806)。
+- 这些是功能/结构冒烟实验，并未执行 21–25 章全部命令脚本：特别是级联在负载下的延迟、实际 Sentinel 3 节点故障转移、Cluster 迁移、生产 THP、GDB 断点/strace/perf/core 故障注入仍未实机验证。只在正文注明预期行为，不能把它们归入已通过测试。
+- 静态与浏览器 CI、Pages 部署和合并情况单独在 Actions/PR 核查；上述 runtime smoke 的成功不意味着 GitHub Pages 已发布。
 
 ## 重要边界
 - WAIT 不是磁盘持久化/严格强一致；min-replicas 不是每条命令的 ACK 证明。

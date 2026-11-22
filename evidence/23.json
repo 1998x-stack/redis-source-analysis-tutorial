@@ -30,5 +30,6 @@
     "P99 observed at client is not equivalent to server command duration"
   ],
   "source_validation": "Pinned GitHub source and official Redis docs reviewed. All diagrams authored as source-anchored mechanism illustrations.",
-  "runtime_validation": "not executed against live Redis 7.2.4 server; browser/static CI test separate"
+  "runtime_validation": "PASS in pinned Redis 7.2.4 CI runtime: INFO counters, slowlog threshold and entries, latency-monitor config. No synthetic P99 incident or perf sampling.",
+  "runtime_ci_url": "https://github.com/1998x-stack/redis-source-analysis-tutorial/actions/runs/45039944806"
 }

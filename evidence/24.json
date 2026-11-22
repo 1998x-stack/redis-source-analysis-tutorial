@@ -39,5 +39,6 @@
     "fork COW is additional memory outside Redis maxmemory resource budget"
   ],
   "source_validation": "Pinned GitHub source and official Redis docs reviewed. All diagrams authored as source-anchored mechanism illustrations.",
-  "runtime_validation": "not executed against live Redis 7.2.4 server; browser/static CI test separate"
+  "runtime_validation": "PASS in pinned Redis 7.2.4 CI runtime: MEMORY USAGE SAMPLES 0, HLEN and UNLINK/EXISTS. No production THP, OOM, sustained hotkey or fork stress test.",
+  "runtime_ci_url": "https://github.com/1998x-stack/redis-source-analysis-tutorial/actions/runs/45039944806"
 }

@@ -32,5 +32,6 @@
     "cascading replicas forward upstream stream, not generate a fresh independent history"
   ],
   "source_validation": "Pinned GitHub source and official Redis docs reviewed. All diagrams authored as source-anchored mechanism illustrations.",
-  "runtime_validation": "not executed against live Redis 7.2.4 server; browser/static CI test separate"
+  "runtime_validation": "PASS in pinned Redis 7.2.4 CI runtime: live primary/replica, SET+WAIT on same connection, replica key visible. Cascading latency and failover not exercised.",
+  "runtime_ci_url": "https://github.com/1998x-stack/redis-source-analysis-tutorial/actions/runs/45039944806"
 }

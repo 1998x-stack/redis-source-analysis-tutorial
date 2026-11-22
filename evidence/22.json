@@ -32,5 +32,6 @@
     "ASK on migration is temporary; MOVED updates stable slot routing"
   ],
   "source_validation": "Pinned GitHub source and official Redis docs reviewed. All diagrams authored as source-anchored mechanism illustrations.",
-  "runtime_validation": "not executed against live Redis 7.2.4 server; browser/static CI test separate"
+  "runtime_validation": "PASS in pinned Redis 7.2.4 CI runtime: single Sentinel quorum=2 yields NOQUORUM; hash-tag CRC16 invariant. Three-Sentinel failover and live Cluster reshard not exercised.",
+  "runtime_ci_url": "https://github.com/1998x-stack/redis-source-analysis-tutorial/actions/runs/45039944806"
 }
