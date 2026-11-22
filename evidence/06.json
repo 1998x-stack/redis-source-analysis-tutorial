@@ -1,0 +1,33 @@
+{
+  "chapter": "06",
+  "version": "7.2.4",
+  "code": [
+    {
+      "source": "src/dict.h",
+      "symbols": [
+        "ht_table",
+        "ht_used",
+        "ht_size_exp",
+        "rehashidx"
+      ],
+      "claim": "actual struct layout differs from older dictht"
+    },
+    {
+      "source": "src/dict.c",
+      "symbols": [
+        "dictGenHashFunction",
+        "siphash",
+        "dictRehash",
+        "dictScan"
+      ],
+      "claim": "SipHash, bucket migrations, cursor semantics"
+    }
+  ],
+  "external": [
+    {
+      "source": "https://redis.io/docs/latest/commands/scan/",
+      "claim": "SCAN duplicates and full iteration guarantees"
+    }
+  ],
+  "test": "shell demo not executed in tool environment"
+}

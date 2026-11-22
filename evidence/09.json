@@ -1,0 +1,30 @@
+{
+  "chapter": "09",
+  "version": "7.2.4",
+  "code": [
+    {
+      "source": "src/t_string.c",
+      "symbols": [
+        "setGenericCommand",
+        "incrDecrCommand"
+      ],
+      "claim": "NX XX GET TTL atomicity and integer overflow"
+    },
+    {
+      "source": "src/t_hash.c",
+      "symbols": [
+        "hashTypeTryConversion",
+        "hashTypeSet",
+        "hsetCommand"
+      ],
+      "claim": "listpack-to-hashtable encoding changes"
+    }
+  ],
+  "external": [
+    {
+      "source": "https://redis.io/docs/latest/develop/whats-new/7-4/",
+      "claim": "HFE introduced in 7.4, not 7.2"
+    }
+  ],
+  "test": "shell demo not executed in tool environment"
+}

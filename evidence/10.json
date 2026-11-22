@@ -1,0 +1,32 @@
+{
+  "chapter": "10",
+  "version": "7.2.4",
+  "code": [
+    {
+      "source": "src/t_list.c",
+      "symbols": [
+        "pushGenericCommand",
+        "createListListpackObject",
+        "blockingPopGenericCommand"
+      ],
+      "claim": "new list starts as listpack; register block only if no candidates"
+    },
+    {
+      "source": "src/blocked.c",
+      "symbols": [
+        "blockForKeys",
+        "signalKeyAsReady",
+        "handleClientsBlockedOnKeys"
+      ],
+      "claim": "waiter index and ready keys lifecycle"
+    },
+    {
+      "source": "src/db.c",
+      "symbols": [
+        "dbAdd"
+      ],
+      "claim": "new list key signals readiness"
+    }
+  ],
+  "test": "three-terminal example documented, not executed"
+}
