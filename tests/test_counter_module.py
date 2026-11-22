@@ -54,6 +54,7 @@ def wait_for_aof_ready(port_number, directory: Path):
         info = cli(port_number, "INFO", "persistence")
         if (
             "aof_rewrite_in_progress:0" in info
+            and "aof_rewrite_scheduled:0" in info
             and "aof_last_bgrewrite_status:ok" in info
         ):
             return manifest.read_text(encoding="utf-8")
@@ -228,7 +229,9 @@ def main():
         assert "type i" in before_manifest
         assert "type i" in before_manifest
 
-        cli(port_number, "BGREWRITEAOF")
+        rewrite_reply = cli(port_number, "BGREWRITEAOF")
+        if "started" not in rewrite_reply.lower():
+            raise AssertionError(f"expected BGREWRITEAOF to start immediately, got: {rewrite_reply}")
 
         def rewrite_done():
             if not manifest.exists():
@@ -238,6 +241,7 @@ def main():
             if (
                 current != before_manifest
                 and "aof_rewrite_in_progress:0" in info
+                and "aof_rewrite_scheduled:0" in info
                 and "aof_last_bgrewrite_status:ok" in info
             ):
                 return current
