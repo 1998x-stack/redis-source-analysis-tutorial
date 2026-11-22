@@ -146,38 +146,38 @@
     },
     {
       "num": "21",
-      "title": "主从复制：工程细节",
+      "title": "复制工程细节",
       "file": "chapters/21.html",
-      "status": "legacy",
-      "version": "原稿待逐章审计"
+      "status": "rewritten",
+      "version": "Redis 7.2.4 · source-anchored deep rewrite"
     },
     {
       "num": "22",
       "title": "Sentinel 与 Cluster",
       "file": "chapters/22.html",
-      "status": "legacy",
-      "version": "原稿待逐章审计"
+      "status": "rewritten",
+      "version": "Redis 7.2.4 · source-anchored deep rewrite"
     },
     {
       "num": "23",
       "title": "性能诊断工具链",
       "file": "chapters/23.html",
-      "status": "legacy",
-      "version": "原稿待逐章审计"
+      "status": "rewritten",
+      "version": "Redis 7.2.4 · source-anchored deep rewrite"
     },
     {
       "num": "24",
-      "title": "生产环境故障排查",
+      "title": "生产故障排查",
       "file": "chapters/24.html",
-      "status": "legacy",
-      "version": "原稿待逐章审计"
+      "status": "rewritten",
+      "version": "Redis 7.2.4 · source-anchored deep rewrite"
     },
     {
       "num": "25",
-      "title": "源码级问题定位",
+      "title": "源码级调试实战",
       "file": "chapters/25.html",
-      "status": "legacy",
-      "version": "原稿待逐章审计"
+      "status": "rewritten",
+      "version": "Redis 7.2.4 · source-anchored deep rewrite"
     },
     {
       "num": "26",

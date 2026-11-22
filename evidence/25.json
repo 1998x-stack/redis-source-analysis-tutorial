@@ -1,0 +1,44 @@
+{
+  "chapter": "25",
+  "source_version": "redis/redis@7.2.4",
+  "source_files": [
+    {
+      "path": "src/Makefile",
+      "url": "https://github.com/redis/redis/blob/7.2.4/src/Makefile"
+    },
+    {
+      "path": "src/networking.c",
+      "url": "https://github.com/redis/redis/blob/7.2.4/src/networking.c"
+    },
+    {
+      "path": "src/server.c",
+      "url": "https://github.com/redis/redis/blob/7.2.4/src/server.c"
+    },
+    {
+      "path": "src/t_string.c",
+      "url": "https://github.com/redis/redis/blob/7.2.4/src/t_string.c"
+    },
+    {
+      "path": "src/debug.c",
+      "url": "https://github.com/redis/redis/blob/7.2.4/src/debug.c"
+    }
+  ],
+  "symbols": [
+    "OPTIMIZATION?=-O3",
+    "DEBUG=-g -ggdb",
+    "readQueryFromClient",
+    "processInputBuffer",
+    "processCommand",
+    "call",
+    "setCommand",
+    "sigsegvHandler"
+  ],
+  "verified_claims": [
+    "Use same Redis 7.2.4 binary/symbols in GDB",
+    "Debug build with OPTIMIZATION=-O0 changes source-level variable visibility",
+    "GDB/strace can pause or perturb service; use isolated instance",
+    "core availability depends on host settings; core may contain sensitive data"
+  ],
+  "source_validation": "Pinned GitHub source and official Redis docs reviewed. All diagrams authored as source-anchored mechanism illustrations.",
+  "runtime_validation": "not executed against live Redis 7.2.4 server; browser/static CI test separate"
+}

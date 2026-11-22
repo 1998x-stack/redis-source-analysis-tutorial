@@ -13,3 +13,7 @@ a{color:var(--accent);text-underline-offset:3px}a:hover{color:#0d5b60}a:focus-vi
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{transition:none!important;animation:none!important}}
 @media print{body{background:white;color:black}.site-head,.article-aside,.pager,.hero-actions,.catalog-tools{display:none!important}.article-layout{display:block;padding:0}.article-main{max-width:100%}.article-main section{break-inside:avoid-page}.figure{box-shadow:none;break-inside:avoid}.article-main pre{white-space:pre-wrap;color:#111;background:#f0f0f0}.simulator{break-inside:avoid}}
 .chapter-card[hidden]{display:none!important}
+
+/* Zoomable source-mechanism figures for chapters 21–25. */
+.figure.diagram-pan{overflow-x:auto;scrollbar-color:#8fa9a3 #e9f0eb}
+@media(max-width:800px){.figure.diagram-pan img{min-width:760px;max-width:none}.figure.diagram-pan figcaption{min-width:680px}}

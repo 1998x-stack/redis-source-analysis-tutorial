@@ -4,10 +4,10 @@ Maintain 28 standalone, evidence-grounded Chinese Redis source tutorials. Optimi
 ## Repository / publishing
 - `docs/` is the canonical GitHub Pages publish directory; `docs/index.html` is the course home. `docs/chapters/NN.html` are canonical articles. `docs/assets/css/site.css` is the source of shared styling; `docs/assets/js/` is progressive enhancement; `docs/assets/svg/` has original standalone diagrams.
 - `docs/01.html`…`docs/28.html` and historical root links redirect to canonical articles. Do not break existing public URLs.
-- Chapters 21–28 are preserved legacy material pending audit; do not silently assert they are validated. They use `docs/chapters/theme.css` compatibility styling.
+- Chapters 26–28 are preserved legacy material pending audit; do not silently assert they are validated. They use `docs/chapters/theme.css` compatibility styling.
 - Avoid server-specific tooling or remote fonts/scripts: pages must render statically from file paths or GitHub Pages subpath.
 ## Technical correctness
-- The first twenty articles pin source links to Redis **7.2.4**; distinguish Redis 7.2 implementation from Redis 8. Redis 7.4 licensing differs, Redis 8 has multi-license options: do not conflate versions.
+- The first twenty-five articles pin source links to Redis **7.2.4**; distinguish Redis 7.2 implementation from Redis 8. Redis 7.4 licensing differs, Redis 8 has multi-license options: do not conflate versions.
 - Verify every symbol / signature / layout against version-pinned Redis upstream source. Differentiate Redis object encodings (embstr/raw/int) from SDS header types.
 - Never state every Redis allocation has a prefix: `HAVE_MALLOC_SIZE` determines the zmalloc path.
 - Redis 7.2 List may use direct listpack or quicklist; do not state quicklist is the sole List encoding.
@@ -33,6 +33,18 @@ Do not surface AI/toolchain/style credits or production notes in an article byli
 - Redis 7.2 eviction supports noeviction, allkeys/volatile LRU, LFU, random and volatile-ttl; do not include later LRM policies. LRU/LFU are approximate.
 - Redis 7.2 replication uses shared refcounted `replBufBlock` list and rax block index; avoid claiming it is literally a standalone fixed byte-array ring. `replid2` is valid only through `second_replid_offset`.
 - Replication is asynchronous; WAIT reduces loss probability but is not a strong-consistency consensus protocol.
+## Lessons 21–25: source and incident-operations constraints
+- REPLCONF ACK confirms replica-applied replication byte offset; WAIT is a client offset fence, not a synchronous/durable/strong-consistency commit. min-replicas-to-write gates new writes using count of online replicas and recent ACK timestamps, not per-write ACKs.
+- Cascading replicas relay the same upstream replication stream; only the top-level master uses replicationFeedSlaves to construct a fresh canonical stream.
+- Sentinel subjective down (SDOWN), objective down (ODOWN quorum), and leader election (absolute majority AND configured quorum) are different states. Sentinel standalone HA is not Cluster sharding.
+- Redis Cluster 7.2 uses 16384 hash slots: CRC16 of the first nonempty {...} tag, otherwise full key. MOVED changes stable slot cache; ASK is temporary resharding and requires ASKING. Do not backport 8.4 atomic slot migration details.
+- SLOWLOG threshold and duration are in microseconds and exclude client network I/O; LATENCY event threshold is in milliseconds and records selected internal event peaks rather than all client P99 samples. INFO counters need time differencing.
+- --bigkeys reports type-specific lengths/counts from a SCAN-like traversal; MEMORY USAGE estimates byte allocation and SAMPLES 0 may be costly. --hotkeys requires LFU policy, and OBJECT FREQ is probabilistic.
+- UNLINK removes a key synchronously and only frees sufficiently costly, safely unshared objects in a BIO thread. An UNLINK reply doesn't imply RSS release.
+- THP/overcommit/kernel settings are host-level operations, not default production copy-paste experiments. maxmemory is not RSS or cgroup hard limit.
+- Redis 7.2.4 src/Makefile uses OPTIMIZATION?=-O3 and DEBUG=-g -ggdb. For independent GDB experiments use clean source and OPTIMIZATION=-O0; never induce DEBUG SEGFAULT/DEBUG SLEEP or attach ptrace without dedicated test environment / production review.
+- Trace every diagnosis from symptom through time-aligned metrics to source mechanism and a falsifiable test. Clearly flag any labs not executed against Redis binaries.
+
 ## Validation gates
 Run `python3 scripts/validate_site.py` before a PR. Check all 28 article links, local media, XML SVG parsing, titles/H1/section hierarchy and absence of broken relative links. Capture 1440px desktop and 390px and 360px mobile in Chromium when available, check overflow and JS console errors, and record any unverified QA.
 GitHub Actions: CI validates the site; Pages workflow deploys `docs/` if GitHub Pages source is set to GitHub Actions. A workflow file alone does not guarantee Pages is live.
