@@ -118,6 +118,7 @@ static kv_entry *store_find(store *s, const unsigned char *key, size_t len) {
 }
 
 static int store_resize(store *s) {
+    if (s->bucket_count > SIZE_MAX / 2) return -1;
     size_t next_count = s->bucket_count * 2;
     kv_entry **next = calloc(next_count, sizeof(*next));
     if (!next) return -1;
@@ -153,11 +154,22 @@ static kv_entry *store_create_entry(store *s, const unsigned char *key, size_t l
 
 static int store_set_string(store *s, const unsigned char *key, size_t key_len,
                             const unsigned char *value, size_t value_len) {
-    kv_entry *e = store_find(s, key, key_len);
-    if (!e) e = store_create_entry(s, key, key_len);
-    if (!e) return -1;
+    /* Allocate the replacement first: an OOM must not leave a ghost key. */
     blob next = {0};
     if (blob_copy(&next, value, value_len) != 0) return -1;
+
+    kv_entry *e = store_find(s, key, key_len);
+    if (!e) {
+        e = store_create_entry(s, key, key_len);
+        if (!e) {
+            blob_free(&next);
+            return -1;
+        }
+        e->type = VALUE_STRING;
+        e->value.string = next;
+        return 0;
+    }
+
     if (e->type == VALUE_HASH) fields_free(e->value.fields);
     else blob_free(&e->value.string);
     e->type = VALUE_STRING;
@@ -169,27 +181,42 @@ static int store_set_hash_field(store *s, const unsigned char *key, size_t key_l
                                 const unsigned char *field, size_t field_len,
                                 const unsigned char *value, size_t value_len) {
     kv_entry *e = store_find(s, key, key_len);
-    if (!e) {
-        e = store_create_entry(s, key, key_len);
-        if (!e) return -2;
-        e->type = VALUE_HASH;
-        e->value.fields = NULL;
-    }
-    if (e->type != VALUE_HASH) return -1;
-    for (hash_field *f = e->value.fields; f; f = f->next) {
-        if (blob_equal(&f->field, field, field_len)) {
-            blob next = {0};
-            if (blob_copy(&next, value, value_len) != 0) return -2;
-            blob_free(&f->value);
-            f->value = next;
-            return 0;
+    if (e && e->type != VALUE_HASH) return -1;
+
+    if (e) {
+        for (hash_field *existing = e->value.fields; existing; existing = existing->next) {
+            if (blob_equal(&existing->field, field, field_len)) {
+                blob next = {0};
+                if (blob_copy(&next, value, value_len) != 0) return -2;
+                blob_free(&existing->value);
+                existing->value = next;
+                return 0;
+            }
         }
     }
+
+    /* Build the field completely before publishing a new hash key. */
     hash_field *f = calloc(1, sizeof(*f));
     if (!f || blob_copy(&f->field, field, field_len) != 0 ||
         blob_copy(&f->value, value, value_len) != 0) {
-        if (f) { blob_free(&f->field); blob_free(&f->value); free(f); }
+        if (f) {
+            blob_free(&f->field);
+            blob_free(&f->value);
+            free(f);
+        }
         return -2;
+    }
+
+    if (!e) {
+        e = store_create_entry(s, key, key_len);
+        if (!e) {
+            blob_free(&f->field);
+            blob_free(&f->value);
+            free(f);
+            return -2;
+        }
+        e->type = VALUE_HASH;
+        e->value.fields = NULL;
     }
     f->next = e->value.fields;
     e->value.fields = f;
@@ -487,7 +514,9 @@ static void client_remove(int epfd, client **clients, client *c) {
 static int client_update_events(int epfd, client *c) {
     struct epoll_event ev;
     memset(&ev, 0, sizeof(ev));
-    ev.events = EPOLLIN | EPOLLRDHUP;
+    ev.events = EPOLLRDHUP;
+    /* Once a reply must be sent before closing, stop accepting more input. */
+    if (!c->close_after_write) ev.events |= EPOLLIN;
     if (c->output_sent < c->output_len) ev.events |= EPOLLOUT;
     ev.data.ptr = c;
     return epoll_ctl(epfd, EPOLL_CTL_MOD, c->fd, &ev);

@@ -58,7 +58,12 @@ static int get_counter_key(RedisModuleCtx *ctx, RedisModuleString *keyname,
         return REDISMODULE_ERR;
     }
     *value = RedisModule_ModuleTypeGetValue(*key);
-    return *value ? REDISMODULE_OK : REDISMODULE_ERR;
+    if (!*value) {
+        RedisModule_CloseKey(*key);
+        *key = NULL;
+        return REDISMODULE_ERR;
+    }
+    return REDISMODULE_OK;
 }
 
 static int counter_set(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
@@ -152,7 +157,11 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
     if (RedisModule_Init(ctx, "countermod", 1, REDISMODULE_APIVER_1) == REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
-    RedisModule_SetModuleOptions(ctx, REDISMODULE_OPTIONS_HANDLE_IO_ERRORS);
+    RedisModule_SetModuleOptions(
+        ctx,
+        REDISMODULE_OPTIONS_HANDLE_IO_ERRORS |
+        REDISMODULE_OPTION_NO_IMPLICIT_SIGNAL_MODIFIED
+    );
     RedisModuleTypeMethods methods = {
         .version = REDISMODULE_TYPE_METHOD_VERSION,
         .rdb_load = counter_rdb_load,
