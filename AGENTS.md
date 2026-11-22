@@ -46,7 +46,7 @@ Do not surface AI/toolchain/style credits or production notes in an article byli
 - Trace every diagnosis from symptom through time-aligned metrics to source mechanism and a falsifiable test. Clearly flag any labs not executed against Redis binaries.
 
 ## Validation gates
-Run `python3 scripts/validate_site.py` before a PR. Check all 28 article links, local media, XML SVG parsing, titles/H1/section hierarchy and absence of broken relative links. Capture 1440px desktop and 390px and 360px mobile in Chromium when available, check overflow and JS console errors, and record any unverified QA.
+Run `python3 scripts/validate_site.py` before a PR. Run `python3 scripts/redis_724_smoke.py /path/to/redis-724/src` on a separately built Redis 7.2.4 binary; this starts only ephemeral localhost services with temporary directories. Its CI workflow must pass separately from browser/static QA. Check all 28 article links, local media, XML SVG parsing, titles/H1/section hierarchy and absence of broken relative links. Capture 1440px desktop and 390px and 360px mobile in Chromium when available, check overflow and JS console errors, and record any unverified QA.
 GitHub Actions: CI validates the site; Pages workflow deploys `docs/` if GitHub Pages source is set to GitHub Actions. A workflow file alone does not guarantee Pages is live.
 ## Editing rules
 Use branches and PRs, preserve 28-article coverage and historical URLs. Do not use page-local 28-item sidebar duplication for rewritten articles. Update the catalog status only after evidence and browser review; never claim a test passed unless executed.

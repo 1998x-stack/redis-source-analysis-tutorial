@@ -31,6 +31,8 @@
 python3 -m http.server 8000 -d docs
 # 浏览 http://localhost:8000/
 python3 scripts/validate_site.py
+# 若已构建独立 Redis 7.2.4，可运行真实机制冒烟实验：
+python3 scripts/redis_724_smoke.py /path/to/redis-724/src
 ```
 静态站点无 Node/框架构建依赖。在 GitHub 的 Settings → Pages 中选择 **GitHub Actions** 作为发布源；`pages.yml` 会上传 `docs/` 并部署。切换源属于仓库设置，需要管理员检查；仅添加工作流不代表已经上线。
 
