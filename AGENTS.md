@@ -4,10 +4,10 @@ Maintain 28 standalone, evidence-grounded Chinese Redis source tutorials. Optimi
 ## Repository / publishing
 - `docs/` is the canonical GitHub Pages publish directory; `docs/index.html` is the course home. `docs/chapters/NN.html` are canonical articles. `docs/assets/css/site.css` is the source of shared styling; `docs/assets/js/` is progressive enhancement; `docs/assets/svg/` has original standalone diagrams.
 - `docs/01.html`…`docs/28.html` and historical root links redirect to canonical articles. Do not break existing public URLs.
-- Chapters 26–28 are preserved legacy material pending audit; do not silently assert they are validated. They use `docs/chapters/theme.css` compatibility styling.
+- Chapters 26–28 are independently rewritten. Chapters 26–27 pin Redis 7.2.4 source; chapter 28 distinguishes Redis 8.10.3 GA from 8.12-RC3 pre-release and pins every release claim to official notes/tags. Keep the course catalog and homepage statuses synchronized with actual QA evidence.
 - Avoid server-specific tooling or remote fonts/scripts: pages must render statically from file paths or GitHub Pages subpath.
 ## Technical correctness
-- The first twenty-five articles pin source links to Redis **7.2.4**; distinguish Redis 7.2 implementation from Redis 8. Redis 7.4 licensing differs, Redis 8 has multi-license options: do not conflate versions.
+- Chapters 01–27 use Redis **7.2.4** for implementation claims; chapter 28 is a separate release-history comparison for Redis 8.10.3 / 8.12-RC3. Distinguish Redis 7.2 BSD-3-Clause, Redis 7.4 RSALv2/SSPLv1, and Redis 8 tri-license options.
 - Verify every symbol / signature / layout against version-pinned Redis upstream source. Differentiate Redis object encodings (embstr/raw/int) from SDS header types.
 - Never state every Redis allocation has a prefix: `HAVE_MALLOC_SIZE` determines the zmalloc path.
 - Redis 7.2 List may use direct listpack or quicklist; do not state quicklist is the sole List encoding.
@@ -46,7 +46,7 @@ Do not surface AI/toolchain/style credits or production notes in an article byli
 - Trace every diagnosis from symptom through time-aligned metrics to source mechanism and a falsifiable test. Clearly flag any labs not executed against Redis binaries.
 
 ## Validation gates
-Run `python3 scripts/validate_site.py` before a PR. Run `python3 scripts/redis_724_smoke.py /path/to/redis-724/src` on a separately built Redis 7.2.4 binary; this starts only ephemeral localhost services with temporary directories. Its CI workflow must pass separately from browser/static QA. Check all 28 article links, local media, XML SVG parsing, titles/H1/section hierarchy and absence of broken relative links. Capture 1440px desktop and 390px and 360px mobile in Chromium when available, check overflow and JS console errors, and record any unverified QA.
+Run `python3 scripts/validate_site.py` before a PR. Run `make -C examples/mini-redis test` on Linux. Build Redis 7.2.4 and the counter module, then run `python3 tests/test_counter_module.py /path/to/redis-724/src /path/to/countermod.so`; the module test must exercise RDB load/save, a true AOF command-stream rewrite (disable RDB preamble and inspect the emitted counter.set command), restart replay, and WATCH invalidation. Run `python3 scripts/redis_724_smoke.py /path/to/redis-724/src` separately. Static validation must check all 28 pages, unique IDs, internal anchors, local assets, catalog/card parity, three figures and interactive models in chapters 26–28, and XML SVG parsing. Browser QA must cover home + all 28 articles at 1440px, 390px and 360px, check image decoding, overflow, anchors, interactive state changes and JS console errors; record any unavailable/unexecuted test.
 GitHub Actions: CI validates the site; Pages workflow deploys `docs/` if GitHub Pages source is set to GitHub Actions. A workflow file alone does not guarantee Pages is live.
 ## Editing rules
 Use branches and PRs, preserve 28-article coverage and historical URLs. Do not use page-local 28-item sidebar duplication for rewritten articles. Update the catalog status only after evidence and browser review; never claim a test passed unless executed.
