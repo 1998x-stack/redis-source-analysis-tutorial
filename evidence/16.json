@@ -1,0 +1,43 @@
+{
+  "chapter": "16",
+  "source_version": "redis/redis@7.2.4",
+  "source_files": [
+    {
+      "path": "src/networking.c",
+      "url": "https://github.com/redis/redis/blob/7.2.4/src/networking.c"
+    },
+    {
+      "path": "src/server.c",
+      "url": "https://github.com/redis/redis/blob/7.2.4/src/server.c"
+    },
+    {
+      "path": "src/commands.def",
+      "url": "https://github.com/redis/redis/blob/7.2.4/src/commands.def"
+    },
+    {
+      "path": "src/resp_parser.c",
+      "url": "https://github.com/redis/redis/blob/7.2.4/src/resp_parser.c"
+    },
+    {
+      "path": "src/acl.c",
+      "url": "https://github.com/redis/redis/blob/7.2.4/src/acl.c"
+    }
+  ],
+  "symbols": [
+    "processInputBuffer",
+    "populateCommandTable",
+    "lookupCommandLogic",
+    "processCommand",
+    "call",
+    "postExecutionUnitOperations",
+    "propagatePendingCommands",
+    "parseReply"
+  ],
+  "verified_claims": [
+    "resp_parser.c parses replies returned by RM_Call/Lua; client requests are parsed in networking.c",
+    "processCommand applies command existence/arity/auth/ACL/routing/state gates before handler",
+    "call invokes c->cmd->proc and accounts dirty delta, latency, slowlog, monitor and propagation flags"
+  ],
+  "verification_method": "Pinned upstream source inspection and cross-check against Redis official docs. Diagrams are original explanatory SVGs.",
+  "runtime_validation": "Not executed against a live Redis binary in this batch; see review file and CI status."
+}
