@@ -1,0 +1,20 @@
+{
+  "chapter": "15",
+  "source_version": "redis/redis@7.2.4",
+  "files": [
+    "src/connection.h",
+    "src/connection.c",
+    "src/networking.c",
+    "src/anet.c",
+    "src/ae.c"
+  ],
+  "symbols": [
+    "ConnectionType",
+    "readQueryFromClient",
+    "IOThreadMain",
+    "handleClientsWithPendingReadsUsingThreads",
+    "writeToClient"
+  ],
+  "methods": "Source symbols and implementation paths inspected in pinned upstream GitHub; conceptual diagrams newly authored.",
+  "runtime_test": "not executed; see CI for static/browser validation"
+}

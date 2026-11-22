@@ -1,0 +1,21 @@
+{
+  "chapter": "12",
+  "source_version": "redis/redis@7.2.4",
+  "files": [
+    "src/stream.h",
+    "src/t_stream.c",
+    "src/geo.c",
+    "src/geohash.c",
+    "src/hyperloglog.c"
+  ],
+  "symbols": [
+    "streamID",
+    "streamCG",
+    "xaddCommand",
+    "xackCommand",
+    "geoaddCommand",
+    "HLL_P"
+  ],
+  "methods": "Source symbols and implementation paths inspected in pinned upstream GitHub; conceptual diagrams newly authored.",
+  "runtime_test": "not executed; see CI for static/browser validation"
+}
