@@ -1,0 +1,20 @@
+{
+  "chapter": "13",
+  "source_version": "redis/redis@7.2.4",
+  "files": [
+    "src/ae.h",
+    "src/ae.c",
+    "src/ae_epoll.c",
+    "src/ae_select.c",
+    "src/networking.c"
+  ],
+  "symbols": [
+    "aeEventLoop",
+    "aeCreateFileEvent",
+    "aeProcessEvents",
+    "aeApiPoll",
+    "AE_BARRIER"
+  ],
+  "methods": "Source symbols and implementation paths inspected in pinned upstream GitHub; conceptual diagrams newly authored.",
+  "runtime_test": "not executed; see CI for static/browser validation"
+}

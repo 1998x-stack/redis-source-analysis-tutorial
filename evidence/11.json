@@ -1,0 +1,18 @@
+{
+  "chapter": "11",
+  "source_version": "redis/redis@7.2.4",
+  "files": [
+    "src/t_set.c",
+    "src/t_zset.c",
+    "src/intset.c"
+  ],
+  "symbols": [
+    "setTypeCreate",
+    "setTypeAddAux",
+    "sinterGenericCommand",
+    "zsetAdd",
+    "zaddGenericCommand"
+  ],
+  "methods": "Source symbols and implementation paths inspected in pinned upstream GitHub; conceptual diagrams newly authored.",
+  "runtime_test": "not executed; see CI for static/browser validation"
+}

@@ -4,10 +4,10 @@ Maintain 28 standalone, evidence-grounded Chinese Redis source tutorials. Optimi
 ## Repository / publishing
 - `docs/` is the canonical GitHub Pages publish directory; `docs/index.html` is the course home. `docs/chapters/NN.html` are canonical articles. `docs/assets/css/site.css` is the source of shared styling; `docs/assets/js/` is progressive enhancement; `docs/assets/svg/` has original standalone diagrams.
 - `docs/01.html`…`docs/28.html` and historical root links redirect to canonical articles. Do not break existing public URLs.
-- Chapters 11–28 are preserved legacy material pending audit; do not silently assert they are validated. They use `docs/chapters/theme.css` compatibility styling.
+- Chapters 16–28 are preserved legacy material pending audit; do not silently assert they are validated. They use `docs/chapters/theme.css` compatibility styling.
 - Avoid server-specific tooling or remote fonts/scripts: pages must render statically from file paths or GitHub Pages subpath.
 ## Technical correctness
-- The first ten articles pin source links to Redis **7.2.4**; distinguish Redis 7.2 implementation from Redis 8. Redis 7.4 licensing differs, Redis 8 has multi-license options: do not conflate versions.
+- The first fifteen articles pin source links to Redis **7.2.4**; distinguish Redis 7.2 implementation from Redis 8. Redis 7.4 licensing differs, Redis 8 has multi-license options: do not conflate versions.
 - Verify every symbol / signature / layout against version-pinned Redis upstream source. Differentiate Redis object encodings (embstr/raw/int) from SDS header types.
 - Never state every Redis allocation has a prefix: `HAVE_MALLOC_SIZE` determines the zmalloc path.
 - Redis 7.2 List may use direct listpack or quicklist; do not state quicklist is the sole List encoding.
@@ -20,6 +20,11 @@ Do not surface AI/toolchain/style credits or production notes in an article byli
 - Redis 7.2.4 dict uses ht_table/ht_used/ht_size_exp arrays and default SipHash; do not apply older dictht/MurmurHash2 descriptions.
 - Redis 7.2.4 Set can be intset, listpack or HT; ZSET listpack or skiplist. Redis Hash Field Expiration belongs to 7.4+, not 7.2.4.
 - For blocking List commands, model client state transitions, not blocking the event loop; explain no built-in acknowledgement guarantee for BLPOP.
+- Redis 7.2 Stream uses rax/listpack and two referenced PEL indices (group and consumer); XACK removes pending status, not the Stream entry.
+- GEOADD encodes coordinates as a 52-bit sortable score and calls ZADD; actual radius queries require distance filtering.
+- HyperLogLog is a special String-valued format: 2^14 registers × 6 bits = 12288 bytes dense payload plus header; estimates are not exact set membership.
+- Redis 7.2 aeTimeEvent is an *unsorted doubly linked list*, not a timer heap; serverCron is a time-event callback with dynamic-hz and per-task budgets.
+- Redis 7.2 I/O threads process selected network reads/writes via fan-out/fan-in. Do not claim arbitrary parallel command execution; replies can remain buffered after addReply.
 ## Validation gates
 Run `python3 scripts/validate_site.py` before a PR. Check all 28 article links, local media, XML SVG parsing, titles/H1/section hierarchy and absence of broken relative links. Capture 1440px desktop and 390px and 360px mobile in Chromium when available, check overflow and JS console errors, and record any unverified QA.
 GitHub Actions: CI validates the site; Pages workflow deploys `docs/` if GitHub Pages source is set to GitHub Actions. A workflow file alone does not guarantee Pages is live.

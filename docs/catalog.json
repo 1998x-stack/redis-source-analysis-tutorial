@@ -76,38 +76,38 @@
     },
     {
       "num": "11",
-      "title": "Set 与 Sorted Set 实现",
+      "title": "Set 与 Sorted Set：集合代数与有序索引",
       "file": "chapters/11.html",
-      "status": "legacy",
-      "version": "原稿待逐章审计"
+      "status": "rewritten",
+      "version": "Redis 7.2.4 · source-anchored deep rewrite"
     },
     {
       "num": "12",
-      "title": "Stream、Geo 与 HyperLogLog",
+      "title": "Stream、Geo 与 HyperLogLog：三类特殊结构",
       "file": "chapters/12.html",
-      "status": "legacy",
-      "version": "原稿待逐章审计"
+      "status": "rewritten",
+      "version": "Redis 7.2.4 · source-anchored deep rewrite"
     },
     {
       "num": "13",
-      "title": "文件事件：Reactor 与 ae",
+      "title": "文件事件与 Reactor",
       "file": "chapters/13.html",
-      "status": "legacy",
-      "version": "原稿待逐章审计"
+      "status": "rewritten",
+      "version": "Redis 7.2.4 · source-anchored deep rewrite"
     },
     {
       "num": "14",
-      "title": "时间事件：serverCron",
+      "title": "时间事件与 serverCron",
       "file": "chapters/14.html",
-      "status": "legacy",
-      "version": "原稿待逐章审计"
+      "status": "rewritten",
+      "version": "Redis 7.2.4 · source-anchored deep rewrite"
     },
     {
       "num": "15",
-      "title": "网络 I/O 架构",
+      "title": "网络 I/O 与线程",
       "file": "chapters/15.html",
-      "status": "legacy",
-      "version": "原稿待逐章审计"
+      "status": "rewritten",
+      "version": "Redis 7.2.4 · source-anchored deep rewrite"
     },
     {
       "num": "16",
