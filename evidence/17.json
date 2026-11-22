@@ -1,0 +1,39 @@
+{
+  "chapter": "17",
+  "source_version": "redis/redis@7.2.4",
+  "source_files": [
+    {
+      "path": "src/rdb.c",
+      "url": "https://github.com/redis/redis/blob/7.2.4/src/rdb.c"
+    },
+    {
+      "path": "src/rdb.h",
+      "url": "https://github.com/redis/redis/blob/7.2.4/src/rdb.h"
+    },
+    {
+      "path": "src/rio.c",
+      "url": "https://github.com/redis/redis/blob/7.2.4/src/rio.c"
+    },
+    {
+      "path": "src/server.c",
+      "url": "https://github.com/redis/redis/blob/7.2.4/src/server.c"
+    }
+  ],
+  "symbols": [
+    "RDB_VERSION 11",
+    "rdbSaveBackground",
+    "rdbSave",
+    "rdbSaveInternal",
+    "rdbSaveRio",
+    "rdbLoadRioWithLoadingCtx",
+    "redisFork"
+  ],
+  "verified_claims": [
+    "RDB 7.2.4 format version is 11",
+    "background save forks child process; child serializes temporary file",
+    "temporary file is flushed/fsynced and renamed; parent continues serving",
+    "COW duplicates modified pages after fork, not whole dataset at fork time"
+  ],
+  "verification_method": "Pinned upstream source inspection and cross-check against Redis official docs. Diagrams are original explanatory SVGs.",
+  "runtime_validation": "Not executed against a live Redis binary in this batch; see review file and CI status."
+}
