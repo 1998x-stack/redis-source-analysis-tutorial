@@ -1,0 +1,27 @@
+{
+  "chapter": "01",
+  "version": "7.2.4",
+  "claims": [
+    {
+      "claim": "命令参数来自输入缓冲区的 RESP 解析",
+      "source": "src/networking.c",
+      "symbols": [
+        "readQueryFromClient",
+        "processInputBuffer"
+      ]
+    },
+    {
+      "claim": "命令执行会经过前后处理包装",
+      "source": "src/server.c",
+      "symbols": [
+        "processCommand",
+        "call"
+      ]
+    },
+    {
+      "claim": "Redis 7.2 与 Redis 8 的许可证不同",
+      "source": "https://redis.io/legal/licenses/"
+    }
+  ],
+  "test": "redis-cli commands, not executed in this environment"
+}

@@ -1,0 +1,25 @@
+{
+  "chapter": "03",
+  "version": "7.2.4",
+  "claims": [
+    {
+      "claim": "HAVE_MALLOC_SIZE 时 PREFIX_SIZE 为 0",
+      "source": "src/zmalloc.c",
+      "symbol": "PREFIX_SIZE"
+    },
+    {
+      "claim": "allocator usable size 与 requested size 可不同",
+      "source": "src/zmalloc.c",
+      "symbols": [
+        "ztrymalloc_usable_internal",
+        "zmalloc_size"
+      ]
+    },
+    {
+      "claim": "used_memory 是 allocator 包装层统计",
+      "source": "src/zmalloc.c",
+      "symbol": "used_memory"
+    }
+  ],
+  "test": "example memory commands not executed"
+}

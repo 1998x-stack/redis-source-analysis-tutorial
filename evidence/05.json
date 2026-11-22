@@ -1,0 +1,23 @@
+{
+  "chapter": "05",
+  "version": "7.2.4",
+  "claims": [
+    {
+      "claim": "ziplist prevlen 中存在跨阈值的级联更新",
+      "source": "src/ziplist.c"
+    },
+    {
+      "claim": "listpack 使用 6 字节 header 和 per-entry backlen",
+      "source": "src/listpack.c",
+      "symbols": [
+        "LP_HDR_SIZE",
+        "lpEncodeBacklen"
+      ]
+    },
+    {
+      "claim": "List 可使用 listpack 和 quicklist 编码",
+      "source": "src/t_list.c"
+    }
+  ],
+  "test": "LPUSH and OBJECT ENCODING demo not executed"
+}
