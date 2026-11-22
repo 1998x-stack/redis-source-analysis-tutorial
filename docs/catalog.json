@@ -111,38 +111,38 @@
     },
     {
       "num": "16",
-      "title": "命令执行全流程",
+      "title": "命令执行：RESP、processCommand 与 call",
       "file": "chapters/16.html",
-      "status": "legacy",
-      "version": "原稿待逐章审计"
+      "status": "rewritten",
+      "version": "Redis 7.2.4 · source-anchored deep rewrite"
     },
     {
       "num": "17",
-      "title": "RDB 持久化",
+      "title": "RDB：fork、COW 与快照格式",
       "file": "chapters/17.html",
-      "status": "legacy",
-      "version": "原稿待逐章审计"
+      "status": "rewritten",
+      "version": "Redis 7.2.4 · source-anchored deep rewrite"
     },
     {
       "num": "18",
-      "title": "AOF 与混合持久化",
+      "title": "AOF：fsync 与 Multi-Part Rewrite",
       "file": "chapters/18.html",
-      "status": "legacy",
-      "version": "原稿待逐章审计"
+      "status": "rewritten",
+      "version": "Redis 7.2.4 · source-anchored deep rewrite"
     },
     {
       "num": "19",
-      "title": "键过期与内存淘汰",
+      "title": "TTL 过期与 maxmemory 淘汰",
       "file": "chapters/19.html",
-      "status": "legacy",
-      "version": "原稿待逐章审计"
+      "status": "rewritten",
+      "version": "Redis 7.2.4 · source-anchored deep rewrite"
     },
     {
       "num": "20",
-      "title": "主从复制：全量与增量",
+      "title": "主从复制：PSYNC 与全量同步",
       "file": "chapters/20.html",
-      "status": "legacy",
-      "version": "原稿待逐章审计"
+      "status": "rewritten",
+      "version": "Redis 7.2.4 · source-anchored deep rewrite"
     },
     {
       "num": "21",

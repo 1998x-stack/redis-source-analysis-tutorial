@@ -7,7 +7,7 @@ from playwright.sync_api import sync_playwright
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / "docs"
 OUT = ROOT / "qa" / "browser"
-URLS = [DOCS / "index.html"] + [DOCS / "chapters" / f"{i:02d}.html" for i in range(1, 16)]
+URLS = [DOCS / "index.html"] + [DOCS / "chapters" / f"{i:02d}.html" for i in range(1, 21)]
 VIEWPORTS = (360, 390, 1440)
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
@@ -45,7 +45,7 @@ def main():
                 if label=="home":
                     if state["chapterCards"]!=28:errors.append("homepage does not contain 28 chapters")
                     page.locator("[data-filter='rewritten']").click()
-                    if page.locator(".chapter-card:visible").count()!=15:errors.append("filter does not show fifteen revised chapters")
+                    if page.locator(".chapter-card:visible").count()!=20:errors.append("filter does not show twenty revised chapters")
                 if label=="04":
                     page.locator("#sim-sds").evaluate("(el) => { el.value = '23'; el.dispatchEvent(new Event('input',{bubbles:true})); }")
                     if "23" not in page.locator("[data-output]").inner_text():errors.append("SDS interactive demo did not update")
@@ -79,6 +79,22 @@ def main():
                             after = output.inner_text()
                             if not before.strip() or after == before or not after.strip():
                                 errors.append("third-batch interactive explanation did not update")
+                if label in ("16", "17", "18", "19", "20"):
+                    demos = page.locator("[data-fourth-demo]")
+                    if demos.count() != 1:
+                        errors.append("expected one fourth-batch interactive explanation")
+                    else:
+                        select = demos.locator("select")
+                        output = demos.locator("[data-output]")
+                        if select.count() != 1 or output.count() != 1:
+                            errors.append("invalid fourth-batch interactive markup")
+                        else:
+                            before = output.inner_text()
+                            if select.locator("option").count() >= 2:
+                                select.select_option(index=1)
+                                after = output.inner_text()
+                                if not before.strip() or after == before or not after.strip():
+                                    errors.append("fourth-batch interactive explanation did not update")
                 results.append({"page":label,"width":width,"status":"pass" if not errors else "fail","errors":errors})
                 page.close()
         browser.close()
