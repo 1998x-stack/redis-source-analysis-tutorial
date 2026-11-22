@@ -1,0 +1,39 @@
+{
+  "chapter": "17",
+  "source_version": "redis/redis@7.2.4",
+  "files": [
+    "src/rdb.h",
+    "src/rdb.c",
+    "src/rio.h",
+    "src/server.c",
+    "src/server.h"
+  ],
+  "symbols": [
+    "RDB_VERSION",
+    "RDB_OPCODE_SELECTDB",
+    "RDB_OPCODE_RESIZEDB",
+    "RDB_OPCODE_EXPIRETIME_MS",
+    "RDB_OPCODE_EOF",
+    "rdbSaveRio",
+    "rdbSave",
+    "rdbSaveBackground",
+    "rdbLoadRio",
+    "rdbLoadRioWithLoadingCtx",
+    "rdbSaveToSlavesSockets"
+  ],
+  "corrections": [
+    "Redis 7.2.4 的 RDB_VERSION 是 11，文件头为 REDIS0011，而非旧稿声称的 0009/版本 9。",
+    "rdbSaveRio 的 7.2.4 签名是 rdbSaveRio(int req, rio *rdb, int *error, int rdbflags, rdbSaveInfo *rsi)，rdbSaveBackground 带 req 与 rdbflags 参数；旧稿示例签名不完整。"
+  ],
+  "info_fields_verified": [
+    "rdb_bgsave_in_progress",
+    "rdb_changes_since_last_save",
+    "rdb_last_save_time",
+    "rdb_last_bgsave_status",
+    "rdb_last_cow_size",
+    "current_cow_size",
+    "current_cow_peak"
+  ],
+  "methods": "Source constants, signatures and INFO fields inspected in pinned upstream GitHub (redis/redis@7.2.4); diagrams newly authored inline as SVG.",
+  "runtime_test": "not executed; static validate.py pass and Chromium browser_check.py pass (see qa/ report)"
+}

@@ -120,8 +120,8 @@
       "num": "17",
       "title": "RDB 持久化",
       "file": "chapters/17.html",
-      "status": "legacy",
-      "version": "原稿待逐章审计"
+      "status": "rewritten",
+      "version": "Redis 7.2.4 · source-anchored deep rewrite"
     },
     {
       "num": "18",
