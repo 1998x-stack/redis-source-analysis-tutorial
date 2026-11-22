@@ -39,7 +39,7 @@ def main():
                     page.locator("[data-filter='rewritten']").click()
                     if page.locator(".chapter-card:visible").count()!=5:errors.append("filter does not show five revised chapters")
                 if label=="04":
-                    page.locator("#sim-sds").fill("23")
+                    page.locator("#sim-sds").evaluate("(el) => { el.value = '23'; el.dispatchEvent(new Event('input',{bubbles:true})); }")
                     if "23" not in page.locator("[data-output]").inner_text():errors.append("SDS interactive demo did not update")
                 results.append({"page":label,"width":width,"status":"pass" if not errors else "fail","errors":errors})
                 page.close()
