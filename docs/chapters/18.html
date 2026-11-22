@@ -3,18 +3,21 @@ mkdir -p &quot;$tmp/data&quot;
 
 ./src/redis-server --bind 127.0.0.1 --port 6390 \
   --dir &quot;$tmp/data&quot; --appendonly yes \
-  --appendfsync everysec --save &quot;&quot;
+  --appendfsync everysec --save &quot;&quot; --daemonize yes \\
+  --pidfile &quot;$tmp/data/redis.pid&quot;
 
 ./src/redis-cli -p 6390 SET aof:counter 1
 ./src/redis-cli -p 6390 INCR aof:counter
 ./src/redis-cli -p 6390 HSET aof:meta mode multipart
 ./src/redis-cli -p 6390 CONFIG GET appenddirname
 ./src/redis-cli -p 6390 BGREWRITEAOF
+while [ &quot;$(./src/redis-cli -p 6390 --raw INFO persistence | awk -F: '/^aof_rewrite_in_progress:/ {print $2}')&quot; = &quot;1&quot; ]; do sleep 0.1; done
 ./src/redis-cli -p 6390 INFO persistence
 
 # 等待 aof_rewrite_in_progress 变为 0 后：
-find &quot;$tmp/data&quot; -maxdepth 2 -type f -print
-cat &quot;$tmp/data/appendonlydir/appendonly.aof.manifest&quot;
+appenddir=$(./src/redis-cli -p 6390 --raw CONFIG GET appenddirname | tail -1)
+find &quot;$tmp/data/$appenddir&quot; -maxdepth 1 -type f -print
+cat &quot;$tmp/data/$appenddir/appendonly.aof.manifest&quot;
 
 ./src/redis-cli -p 6390 SHUTDOWN
 rm -rf &quot;$tmp&quot;</code></pre><p>实际 manifest 文件名以 <code>CONFIG GET appenddirname</code> 返回值为准；若 rewrite 尚未结束，不要提前删除临时文件或只复制 BASE。检查 AOF 时应先对副本运行 <code>redis-check-aof</code>，不要直接在唯一数据目录执行修复。</p></section><section id="limits" aria-labelledby="h-limits"><h2 id="h-limits">AOF 的保证边界：命令记录、刷盘与备份集合</h2><p>AOF 的三个关键时点是：命令已执行并被传播、字节已 write 到操作系统、相关数据已 fsync。不同 fsync 策略在这几个时点之间提供不同保证。即使使用 <code>always</code>，磁盘控制器、电源保护和文件系统语义仍然是底层可靠性的一部分。</p><p>备份 Multi-Part AOF 时，需要复制 manifest 和它引用的完整当前文件集合；若在 rewrite 过程中盲目复制，可能得到 manifest 与文件版本不匹配的集合。Redis 官方文档建议备份时先避免 rewrite 并确认 <code>INFO persistence</code> 中没有 rewrite 运行。下一章转向内存生命周期：TTL 到期删除与 maxmemory 淘汰是两个独立的释放原因。</p></section><section class="sources" id="sources" aria-labelledby="h-sources"><h2 id="h-sources">固定版本源码与参考</h2><p>实现细节以 Redis 7.2.4 为准；官方最新文档用于核对概念与运维语义，不能反向替代版本锁定的源码证据。</p><ol><li><a href="https://github.com/redis/redis/blob/7.2.4/src/aof.c">aof.c：manifest、feedAppendOnlyFile、flushAppendOnlyFile、BGREWRITEAOF</a></li><li><a href="https://github.com/redis/redis/blob/7.2.4/src/server.c">server.c：call 与命令传播执行单元</a></li><li><a href="https://github.com/redis/redis/blob/7.2.4/src/bio.c">bio.c：后台 fsync worker</a></li><li><a href="https://github.com/redis/redis/blob/7.2.4/src/rdb.c">rdb.c：AOF RDB preamble 的序列化路径</a></li><li><a href="https://redis.io/docs/latest/operate/oss_and_stack/management/persistence/">Redis 官方持久化：Multi-Part AOF 自 7.0 引入；rewrite 和 fsync 语义</a></li></ol></section><nav class="pager" aria-label="前后章节"><a href="17.html">← 第 17 章</a><a href="19.html">第 19 章 →</a></nav></article></main></div><footer class="footer"><div class="max"><a href="../index.html">返回课程首页</a> · <a href="https://github.com/redis/redis/tree/7.2.4">Redis 7.2.4 源码</a></div></footer><script src="../assets/js/fourth-article.js" defer></script></body></html>

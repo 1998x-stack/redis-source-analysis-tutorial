@@ -16,11 +16,13 @@ mkdir -p &quot;$tmp/data&quot;
 
 ./src/redis-server --bind 127.0.0.1 --port 6390 \
   --dir &quot;$tmp/data&quot; --dbfilename dump.rdb \
-  --save &quot;&quot; --appendonly no
+  --save &quot;&quot; --appendonly no --daemonize yes \\
+  --pidfile &quot;$tmp/data/redis.pid&quot;
 
 ./src/redis-cli -p 6390 SET snapshot:version 7.2.4
 ./src/redis-cli -p 6390 HSET snapshot:meta source rdb
 ./src/redis-cli -p 6390 BGSAVE
+while [ &quot;$(./src/redis-cli -p 6390 --raw INFO persistence | awk -F: '/^rdb_bgsave_in_progress:/ {print $2}')&quot; = &quot;1&quot; ]; do sleep 0.1; done
 ./src/redis-cli -p 6390 INFO persistence
 ./src/redis-check-rdb &quot;$tmp/data/dump.rdb&quot;
 xxd -l 9 &quot;$tmp/data/dump.rdb&quot;
@@ -28,7 +30,8 @@ xxd -l 9 &quot;$tmp/data/dump.rdb&quot;
 ./src/redis-cli -p 6390 SHUTDOWN NOSAVE
 ./src/redis-server --bind 127.0.0.1 --port 6390 \
   --dir &quot;$tmp/data&quot; --dbfilename dump.rdb \
-  --save &quot;&quot; --appendonly no
+  --save &quot;&quot; --appendonly no --daemonize yes \\
+  --pidfile &quot;$tmp/data/redis.pid&quot;
 ./src/redis-cli -p 6390 GET snapshot:version
 ./src/redis-cli -p 6390 HGET snapshot:meta source
 ./src/redis-cli -p 6390 SHUTDOWN NOSAVE
