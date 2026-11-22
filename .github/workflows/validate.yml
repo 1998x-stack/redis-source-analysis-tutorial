@@ -1,0 +1,12 @@
+name: Validate tutorial site
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  integrity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate HTML, links, catalog and SVG
+        run: python3 scripts/validate_site.py
