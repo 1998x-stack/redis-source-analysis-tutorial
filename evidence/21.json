@@ -1,0 +1,32 @@
+{
+  "chapter": "21",
+  "source_version": "redis/redis@7.2.4",
+  "files": [
+    "src/replication.c",
+    "src/rdb.c",
+    "src/server.h",
+    "src/server.c"
+  ],
+  "symbols": [
+    "startBgsaveForReplication",
+    "rdbSaveToSlavesSockets",
+    "rdbSaveRioWithEOFMark",
+    "feedReplicationBuffer",
+    "feedReplicationBufferWithObject",
+    "replicationCron",
+    "waitCommand",
+    "repl_diskless_sync",
+    "repl_diskless_load",
+    "min_replicas_to_write",
+    "min_replicas_max_lag"
+  ],
+  "corrections": [
+    "7.2.4 的 rdbSaveToSlavesSockets 签名是 rdbSaveToSlavesSockets(int req, rdbSaveInfo *rsi)，旧稿示例的 (rdbflags, list *slaves, int *error) 形式不适用。",
+    "startBgsaveForReplication 在 7.2.4 带两个参数 (int mincapa, int req)。"
+  ],
+  "notes": [
+    "repl-diskless-load 的三种取值（disabled / on-empty-db / swapdb）对应 REPL_DISKLESS_LOAD_* 常量，正文以配置语义描述。"
+  ],
+  "methods": "Source signatures and fields inspected in pinned upstream GitHub (redis/redis@7.2.4); diagrams newly authored inline as SVG.",
+  "runtime_test": "not executed; static validate.py pass and Chromium browser_check.py pass (see qa/ report)"
+}
