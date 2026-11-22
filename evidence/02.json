@@ -1,0 +1,15 @@
+{
+  "chapter": "02",
+  "version": "7.2.4",
+  "claims": [
+    {
+      "claim": "Redis 7.2 构建可选 MALLOC=libc，clean 重建缓存依赖",
+      "source": "README.md"
+    },
+    {
+      "claim": "processCommand 在 server.c",
+      "source": "src/server.c"
+    }
+  ],
+  "test": "build and GDB commands documented but not run against a redis binary here"
+}

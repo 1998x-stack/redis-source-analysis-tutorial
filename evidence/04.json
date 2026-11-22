@@ -1,0 +1,27 @@
+{
+  "chapter": "04",
+  "version": "7.2.4",
+  "claims": [
+    {
+      "claim": "sdshdr5 的 flags 编码长度且缺少 alloc",
+      "source": "src/sds.h",
+      "symbols": [
+        "sdshdr5",
+        "sdsavail"
+      ]
+    },
+    {
+      "claim": "sdsMakeRoomFor greedy 小容量翻倍，大于阈值增加 1MiB",
+      "source": "src/sds.c",
+      "symbol": "_sdsMakeRoomFor"
+    },
+    {
+      "claim": "对象编码和 SDS 头部不是同一个抽象层",
+      "sources": [
+        "src/object.c",
+        "src/sds.h"
+      ]
+    }
+  ],
+  "test": "binary-safety shell example described, not executed"
+}

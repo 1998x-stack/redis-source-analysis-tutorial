@@ -1,0 +1,204 @@
+{
+  "title": "Redis 源码解析：从字节到集群",
+  "canonicalVersion": "7.2.4",
+  "referenceVersion": "7.2.4",
+  "chapterCount": 28,
+  "chapters": [
+    {
+      "num": "01",
+      "title": "Redis 源码全景图",
+      "file": "chapters/01.html",
+      "status": "rewritten",
+      "version": "Redis 7.2.4 · verified core path"
+    },
+    {
+      "num": "02",
+      "title": "编译与调试环境搭建",
+      "file": "chapters/02.html",
+      "status": "rewritten",
+      "version": "Redis 7.2.4 · verified core path"
+    },
+    {
+      "num": "03",
+      "title": "内存管理：zmalloc 与 jemalloc",
+      "file": "chapters/03.html",
+      "status": "rewritten",
+      "version": "Redis 7.2.4 · verified core path"
+    },
+    {
+      "num": "04",
+      "title": "SDS 动态字符串",
+      "file": "chapters/04.html",
+      "status": "rewritten",
+      "version": "Redis 7.2.4 · verified core path"
+    },
+    {
+      "num": "05",
+      "title": "链表、ziplist 与 listpack",
+      "file": "chapters/05.html",
+      "status": "rewritten",
+      "version": "Redis 7.2.4 · verified core path"
+    },
+    {
+      "num": "06",
+      "title": "字典与渐进式 rehash",
+      "file": "chapters/06.html",
+      "status": "legacy",
+      "version": "原稿待逐章审计"
+    },
+    {
+      "num": "07",
+      "title": "跳表与整数集合",
+      "file": "chapters/07.html",
+      "status": "legacy",
+      "version": "原稿待逐章审计"
+    },
+    {
+      "num": "08",
+      "title": "redisObject 与编码转换",
+      "file": "chapters/08.html",
+      "status": "legacy",
+      "version": "原稿待逐章审计"
+    },
+    {
+      "num": "09",
+      "title": "String 与 Hash 命令实现",
+      "file": "chapters/09.html",
+      "status": "legacy",
+      "version": "原稿待逐章审计"
+    },
+    {
+      "num": "10",
+      "title": "List 命令与阻塞操作",
+      "file": "chapters/10.html",
+      "status": "legacy",
+      "version": "原稿待逐章审计"
+    },
+    {
+      "num": "11",
+      "title": "Set 与 Sorted Set 实现",
+      "file": "chapters/11.html",
+      "status": "legacy",
+      "version": "原稿待逐章审计"
+    },
+    {
+      "num": "12",
+      "title": "Stream、Geo 与 HyperLogLog",
+      "file": "chapters/12.html",
+      "status": "legacy",
+      "version": "原稿待逐章审计"
+    },
+    {
+      "num": "13",
+      "title": "文件事件：Reactor 与 ae",
+      "file": "chapters/13.html",
+      "status": "legacy",
+      "version": "原稿待逐章审计"
+    },
+    {
+      "num": "14",
+      "title": "时间事件：serverCron",
+      "file": "chapters/14.html",
+      "status": "legacy",
+      "version": "原稿待逐章审计"
+    },
+    {
+      "num": "15",
+      "title": "网络 I/O 架构",
+      "file": "chapters/15.html",
+      "status": "legacy",
+      "version": "原稿待逐章审计"
+    },
+    {
+      "num": "16",
+      "title": "命令执行全流程",
+      "file": "chapters/16.html",
+      "status": "legacy",
+      "version": "原稿待逐章审计"
+    },
+    {
+      "num": "17",
+      "title": "RDB 持久化",
+      "file": "chapters/17.html",
+      "status": "legacy",
+      "version": "原稿待逐章审计"
+    },
+    {
+      "num": "18",
+      "title": "AOF 与混合持久化",
+      "file": "chapters/18.html",
+      "status": "legacy",
+      "version": "原稿待逐章审计"
+    },
+    {
+      "num": "19",
+      "title": "键过期与内存淘汰",
+      "file": "chapters/19.html",
+      "status": "legacy",
+      "version": "原稿待逐章审计"
+    },
+    {
+      "num": "20",
+      "title": "主从复制：全量与增量",
+      "file": "chapters/20.html",
+      "status": "legacy",
+      "version": "原稿待逐章审计"
+    },
+    {
+      "num": "21",
+      "title": "主从复制：工程细节",
+      "file": "chapters/21.html",
+      "status": "legacy",
+      "version": "原稿待逐章审计"
+    },
+    {
+      "num": "22",
+      "title": "Sentinel 与 Cluster",
+      "file": "chapters/22.html",
+      "status": "legacy",
+      "version": "原稿待逐章审计"
+    },
+    {
+      "num": "23",
+      "title": "性能诊断工具链",
+      "file": "chapters/23.html",
+      "status": "legacy",
+      "version": "原稿待逐章审计"
+    },
+    {
+      "num": "24",
+      "title": "生产环境故障排查",
+      "file": "chapters/24.html",
+      "status": "legacy",
+      "version": "原稿待逐章审计"
+    },
+    {
+      "num": "25",
+      "title": "源码级问题定位",
+      "file": "chapters/25.html",
+      "status": "legacy",
+      "version": "原稿待逐章审计"
+    },
+    {
+      "num": "26",
+      "title": "Lua 脚本与事务",
+      "file": "chapters/26.html",
+      "status": "legacy",
+      "version": "原稿待逐章审计"
+    },
+    {
+      "num": "27",
+      "title": "Module 开发实战",
+      "file": "chapters/27.html",
+      "status": "legacy",
+      "version": "原稿待逐章审计"
+    },
+    {
+      "num": "28",
+      "title": "Redis 8 与 Mini-Redis",
+      "file": "chapters/28.html",
+      "status": "legacy",
+      "version": "原稿待逐章审计"
+    }
+  ]
+}

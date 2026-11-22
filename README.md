@@ -1,67 +1,38 @@
-# 🔧 Redis源码分析 · 从入门到精通
+# Redis 源码解析：从字节到集群
+> 28 个章节的 Redis 源码阅读路线。前 5 章已按 Redis **7.2.4** 重写；其余 23 章保留并等待逐篇技术审计。
 
-> 📘 28章 实战体系
+**课程入口**：[GitHub Pages](https://1998x-stack.github.io/redis-source-analysis-tutorial/) · [仓库](https://github.com/1998x-stack/redis-source-analysis-tutorial)
 
-一套完整的 **Redis源码分析 · 从入门到精通** 全中文实战课程体系，共 **28 章**。本课程以 HTML 可视化的形式呈现，从基础原理到工程实践循序渐进，适合系统性学习与复习。
+## 阅读路线
+1. **01–05 基础机制**：服务器运行图、构建与调试、内存分配、SDS、listpack/quicklist。每篇含独立 SVG 与源码证据。
+2. **06–16 数据结构与请求执行**：字典、跳表、对象、事件循环、网络及命令路由（历史内容，待第二轮核验）。
+3. **17–28 持久化与工程实践**：复制、集群、性能定位、Lua/模块及版本演进（历史内容，待第二轮核验）。
 
-## 🚀 快速开始
+## 仓库结构
+```
+.
+├── AGENTS.md                       # 写作、源码验证、SVG 与 QA 协议
+├── docs/                           # GitHub Pages 静态发布根目录
+│   ├── index.html                  # 阅读首页 / 学习路径 / 全部 28 章
+│   ├── catalog.json                # 课程清单及 QA 状态
+│   ├── chapters/NN.html            # 28 篇独立文章
+│   ├── chapters/theme.css          # 06–28 历史文章兼容样式
+│   └── assets/{css,js,svg}/        # 共享排版、交互、专业矢量图
+├── scripts/validate_site.py        # 无依赖的本地完整性检查
+└── .github/workflows/             # CI + GitHub Pages 部署
+```
 
-无需安装任何依赖，直接用浏览器打开 `index.html` 即可在线阅读全部章节：
+根目录与 `docs/01.html`～`docs/28.html` 设兼容重定向，避免旧链接失效。原有 HTML 正文在 `docs/chapters/` 保留，06–28 未被伪装成已重构版本。
 
+## 本地阅读与检查
 ```bash
-open index.html   # macOS
-# 或在浏览器中直接打开 index.html
+python3 -m http.server 8000 -d docs
+# 浏览 http://localhost:8000/
+python3 scripts/validate_site.py
 ```
+静态站点无 Node/框架构建依赖。在 GitHub 的 Settings → Pages 中选择 **GitHub Actions** 作为发布源；`pages.yml` 会上传 `docs/` 并部署。切换源属于仓库设置，需要管理员检查；仅添加工作流不代表已经上线。
 
-## 📖 章节目录
+## 版本与证据
+源码锚定 `redis/redis` 的 [7.2.4 标签](https://github.com/redis/redis/tree/7.2.4)。文章引用版本固定的文件，以免后续实现改变误导读者。Redis 的 7.2/7.4/8 许可及模块集不同，详见 [Redis 官方许可说明](https://redis.io/legal/licenses/)。
 
-| # | 章节 | 核心主题 |
-|---|------|----------|
-| 01 | Redis源码全景图 | 项目架构、antirez设计哲学、阅读路线图、环境搭建 |
-| 02 | 编译与调试环境搭建 | Makefile编译选项、GDB调试配置、VSCode+clangd |
-| 03 | 内存管理：zmalloc与jemalloc | zmalloc源码、jemalloc原理、used_memory统计、内存碎片分析 |
-| 04 | SDS动态字符串 | 二进制安全设计、五种sdshdr、预分配与惰性释放、embstr/raw/int编码 |
-| 05 | 链表、压缩列表与listpack | adlist双向链表、ziplist连锁更新、listpack替代方案、quicklist混合结构 |
-| 06 | 字典与渐进式rehash | dict三层结构、MurmurHash2、渐进式rehash、SCAN命令原理 |
-| 07 | 跳表与整数集合 | skiplist层高随机生成、intset自适应升级、zset双结构设计、跳表vs红黑树 |
-| 08 | redisObject与编码转换 | type/encoding/refcount/lru、编码阈值与转换、共享对象池、OBJECT命令源码 |
-| 09 | String与Hash命令实现 | SET/GET/INCR源码、HSET/HGET实现、HFE字段过期、批量操作优化 |
-| 10 | List命令与阻塞操作 | quicklist深层结构、push/pop命令、BLPOP阻塞队列、消息队列模式 |
-| 11 | Set与Sorted Set命令实现 | 集合运算SINTER/SUNION、zaddGenericCommand、ZUNIONSTORE聚合、编码切换阈值 |
-| 12 | Stream、Geo与HyperLogLog | rax基数树、消费组与PEL、GeoHash编码、HLL基数估算 |
-| 13 | 事件循环（上）：文件事件 | Reactor模式、aeEventLoop结构、epoll/kqueue/io_uring后端、AE_BARRIER优化 |
-| 14 | 事件循环（下）：时间事件 | serverCron周期任务、beforeSleep钩子、hz参数调优、阻塞操作配合 |
-| 15 | 网络IO架构 | 网络模型演进史、connection抽象层、IO多线程机制、输出缓冲区管理 |
-| 16 | 命令处理全流程 | RESP协议解析、命令查找表、ACL权限校验、响应输出 |
-| 17 | RDB持久化 | fork写时复制、rdbSave序列化、BGSAVE调度、CRC64校验 |
-| 18 | AOF与混合持久化 | 命令追加与刷盘、fsync三种策略、AOF重写、RDB+AOF混合 |
-| 19 | 键过期与内存淘汰 | 惰性删除+定期删除、LRU近似算法、LFU对数计数器、8种淘汰策略 |
-| 20 | 主从复制（上） | 全量同步RDB传输、PSYNC部分重同步、replication backlog、环形缓冲溢出 |
-| 21 | 主从复制（下） | 无盘复制、级联复制拓扑、min-replicas安全阀、命令传播 |
-| 22 | Sentinel哨兵与Cluster集群 | SDOWN/ODOWN判定、Raft故障转移选举、哈希槽与MOVED/ASK、Gossip协议 |
-| 23 | 性能诊断工具链 | INFO命令全解、latency monitor、slowlog、perf火焰图 |
-| 24 | 生产环境踩坑指南 | bigkey/hotkey问题、fork与THP陷阱、CPU/内存排查、配置陷阱 |
-| 25 | 源码级问题定位实战 | GDB断点调试、core dump分析、strace追踪、三个实战案例 |
-| 26 | Lua脚本与事务 | EVAL/EVALSHA源码、lua_limit_timeout、MULTI/EXEC/WATCH、原子性保证 |
-| 27 | Module开发实战 | Module API体系、自定义命令与类型、Redis Stack生态、完整Module示例 |
-| 28 | Redis 8.x前瞻与手写Mini-Redis | Vector Sets向量搜索、io_uring接入、Valkey社区、从零实现Mini-Redis |
-
-## 📂 项目结构
-
-```text
-redis-source-analysis-tutorial/
-├── index.html      # 课程主入口（在线阅读全部章节）
-├── 01.html ~ 28.html   # 各章节正文
-├── courses.json    # 课程元数据（标题/章节/主题）
-└── theme.css       # 统一主题样式
-```
-
-## ✨ 课程特色
-
-- **全中文实战体系**：面向中文读者，由浅入深，覆盖原理与工程实践
-- **28 章完整内容**：系统化章节编排，形成完整知识闭环
-- **可视化呈现**：HTML 图文并茂，适合快速浏览与重点回顾
-- **即开即用**：无需构建、无需服务器，纯静态页面随开随看
-
----
-*本课程由 `redis-source-analysis-tutorial/` 项目维护。*
+视觉叙事受 [Olah-style-posts](https://github.com/1998x-stack/Olah-style-posts) 启发，图解为本仓库新绘制，不复用第三方图像。
