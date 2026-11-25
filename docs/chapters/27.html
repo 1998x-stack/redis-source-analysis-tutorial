@@ -1,477 +1,95 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.5, user-scalable=yes">
-    <title>第27章 Module开发实战</title>
-    <link rel="stylesheet" href="theme.css">
-</head>
-<body>
-<div class="double-border">
-<div class="container">
-    <div class="sidebar">
-        <h3>🔧 课程目录</h3>
-        <ul class="chapter-list">
-            <li><a href="01.html">第1章 Redis源码全景图</a></li>
-            <li><a href="02.html">第2章 编译与调试环境搭建</a></li>
-            <li><a href="03.html">第3章 内存管理：zmalloc与jemalloc</a></li>
-            <li><a href="04.html">第4章 SDS动态字符串</a></li>
-            <li><a href="05.html">第5章 链表、压缩列表与listpack</a></li>
-            <li><a href="06.html">第6章 字典与渐进式rehash</a></li>
-            <li><a href="07.html">第7章 跳表与整数集合</a></li>
-            <li><a href="08.html">第8章 redisObject与编码转换</a></li>
-            <li><a href="09.html">第9章 String与Hash命令实现</a></li>
-            <li><a href="10.html">第10章 List命令与阻塞操作</a></li>
-            <li><a href="11.html">第11章 Set与Sorted Set命令实现</a></li>
-            <li><a href="12.html">第12章 Stream、Geo与HyperLogLog</a></li>
-            <li><a href="13.html">第13章 事件循环（上）：文件事件</a></li>
-            <li><a href="14.html">第14章 事件循环（下）：时间事件</a></li>
-            <li><a href="15.html">第15章 网络IO架构</a></li>
-            <li><a href="16.html">第16章 命令处理全流程</a></li>
-            <li><a href="17.html">第17章 RDB持久化</a></li>
-            <li><a href="18.html">第18章 AOF与混合持久化</a></li>
-            <li><a href="19.html">第19章 键过期与内存淘汰</a></li>
-            <li><a href="20.html">第20章 主从复制（上）</a></li>
-            <li><a href="21.html">第21章 主从复制（下）</a></li>
-            <li><a href="22.html">第22章 Sentinel哨兵与Cluster集群</a></li>
-            <li><a href="23.html">第23章 性能诊断工具链</a></li>
-            <li><a href="24.html">第24章 生产环境踩坑指南</a></li>
-            <li><a href="25.html">第25章 源码级问题定位实战</a></li>
-            <li><a href="26.html">第26章 Lua脚本与事务</a></li>
-            <li><a href="27.html" class="active">第27章 Module开发实战</a></li>
-            <li><a href="28.html">第28章 Redis 8.x前瞻与手写Mini-Redis</a></li>
-        </ul>
-    </div>
-    <div class="main-content">
+<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="按 Redis 7.2.4 讲解 Module 开发：redismodule.h、RedisModule_OnLoad 与 CreateCommand、自定义数据类型与 RDB 持久化回调、阻塞命令的 block/unblock 与线程安全上下文。">
+<title>第 27 章｜Module 开发：在 Redis 进程内扩展 · Redis 源码解析</title>
+<style>*,*::before,*::after{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,"PingFang SC",sans-serif;line-height:1.78;color:#1d3438;background:#fdfcf8;overflow-wrap:anywhere}svg,img{max-width:100%;height:auto}pre{overflow-x:auto;max-width:100%;white-space:pre-wrap;word-break:break-word}.table-scroll{overflow-x:auto;max-width:100%}table{border-collapse:collapse;width:100%}</style>
+<link rel="stylesheet" href="../assets/css/site.css"></head><body>
+<a class="skip-link" href="#main">跳至正文</a>
+<header class="site-head"><div class="site-head-inner"><a class="brand" href="../index.html"><span class="brand-mark">R</span>Redis / 源码图谱</a><nav class="site-links" aria-label="主要导航"><a href="../index.html#chapters">全部章节</a><a href="#sources">参考源码</a><a href="https://github.com/1998x-stack/redis-source-analysis-tutorial">GitHub</a></nav></div></header>
+<div class="article-layout">
+<aside class="article-aside" aria-label="本章目录"><a href="../index.html">← 返回首页</a><details open><summary>本章阅读路径</summary><nav class="toc-links" aria-label="正文目录">
+<a href="#problem">先说清楚问题：为什么要在进程内扩展</a>
+<a href="#onload">入口：RedisModule_OnLoad 与命令注册</a>
+<a href="#datatype">自定义数据类型与持久化回调</a>
+<a href="#keyspace">键空间访问与线程安全上下文</a>
+<a href="#blocking">阻塞命令：block / unblock</a>
+<a href="#ecosystem">模块生态与许可边界</a>
+<a href="#experiment">对照实验：构建并加载示例模块</a>
+<a href="#limits">模块能力的边界</a>
+<a href="#sources">固定版本参考</a>
+</nav></details></aside>
+<main class="article-main" id="main"><article>
+<header class="article-header"><p class="eyebrow">Chapter 27 / Redis 7.2.4 Source Anatomy</p><h1>Module 开发：在 Redis 进程内扩展</h1><p class="lede">前面的脚本与函数受 Lua 能力限制。若需要新的命令语义、新的值类型或与外部系统交互，就要写 Module。本章按 Redis 7.2.4 的 <code>redismodule.h</code>，讲清入口、命令、自定义数据类型、持久化回调与阻塞命令。</p><p class="reading-meta">固定源代码 Redis 7.2.4 · 问题 → 图解 → 源码 → 实验 → 边界</p></header>
+<section id="problem" aria-labelledby="h-problem"><h2 id="h-problem">先说清楚问题：为什么要在进程内扩展</h2>
+<p>Lua 脚本和 Functions 能组合现有命令，但它们跑在受限的沙箱里，不能定义新的值类型，也不能调外部库。Module 把代码编译成动态库（<code>.so</code>），由 Redis 在运行时 <code>MODULE LOAD</code> 进同一个进程，从而能注册新命令、新数据类型、新配置。代价是：模块代码与 Redis 主线程共享地址空间，写错了会直接影响整个实例。</p>
+<p>本章的代码片段是<strong>可编译的最小示意</strong>，用于说明 API 的调用形状，不是一个可直接上线的模块。所有 API 名称针对 Redis 7.2.4 的 <code>redismodule.h</code>（API 版本 <code>REDISMODULE_APIVER_1</code>）。</p>
+</section>
+<section id="onload" aria-labelledby="h-onload"><h2 id="h-onload">入口：RedisModule_OnLoad 与命令注册</h2>
+<p>模块必须导出 <code>RedisModule_OnLoad</code>，Redis 加载动态库后调用它。入口里通常做三件事：<code>RedisModule_Init</code> 声明模块名与版本、<code>RedisModule_CreateCommand</code> 注册命令、必要时注册数据类型与配置。下面是一个最小命令模块：</p>
+<pre><code>#include "redismodule.h"
 
-        <h2>第27章：Module 开发实战</h2>
-
-        <p>大家好，我是你们的讲师。上一章我们讲了 Lua 脚本——它在 Redis 内部嵌入了一个动态语言解释器，让你可以在 Redis 进程中运行自定义逻辑。但 Lua 脚本有它的天花板：性能受限于解释执行、无法操作网络层、不能管理持久化状态。如果你需要的是更底层、更高效、与 Redis 核心数据结构深度集成的能力，那就需要 <strong>Module 系统</strong>了。</p>
-
-        <p>Module 是 Redis 4.0 引入的一个里程碑式特性。它提供了一套 C API，让开发者可以编写动态链接库（<code>.so</code> 文件），在运行时加载到 Redis 进程中，注册新命令、创建新数据类型、甚至操作网络 IO。可以说，Module 系统把 Redis 从一个"固件"变成了一个"操作系统"——你可以在上面"安装"功能模块。Redis Stack 中的 RediSearch、RedisJSON、RedisTimeSeries 全都是基于 Module API 构建的。</p>
-
-        <p>本章我们从 <code>module.c</code>（约 7000 行，是 Redis 中最大的源文件之一）中提取核心脉络，理解 Module API 的设计哲学，并通过一个完整的实战例子带你走通 Module 开发的全流程。</p>
-
-        <h2>Module API 体系</h2>
-
-        <p>Module 系统的入口函数是 <code>RedisModule_Init</code>——这是一个宏，在每个 Module 的 <code>OnLoad</code> 函数中必须首先调用。它完成了 Module 与 Redis 核心的握手：版本检查、API 函数绑定、标志位设置。</p>
-
-        <pre><code>/* 一个最小 Module 的骨架 */
-#include "redismodule.h"
+int counter_incr(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+    RedisModule_AutoMemory(ctx);            /* 自动回收本次调用的对象 */
+    if (argc != 2) return RedisModule_WrongArity(ctx);
+    long long v = 0;
+    if (RedisModule_StringToLongLong(argv[1], &amp;v) != REDISMODULE_OK)
+        return RedisModule_ReplyWithError(ctx, "ERR not an integer");
+    RedisModule_ReplyWithLongLong(ctx, v + 1);
+    return REDISMODULE_OK;
+}
 
 int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-    /* 1. 初始化：版本校验 + API 函数绑定 */
-    if (RedisModule_Init(ctx, "mymodule", 1, REDISMODULE_APIVER_1)
-        == REDISMODULE_ERR) {
+    if (RedisModule_Init(ctx, "counter", 1, REDISMODULE_APIVER_1) == REDISMODULE_ERR)
         return REDISMODULE_ERR;
-    }
-
-    /* 2. 注册自定义命令 */
-    if (RedisModule_CreateCommand(ctx, "mycommand.set",
-                                  MyCommand_Set, "write", 1, 1, 1) ==
-        REDISMODULE_ERR) {
+    if (RedisModule_CreateCommand(ctx, "counter.incr", counter_incr,
+                                  "readonly fast", 0, 0, 0) == REDISMODULE_ERR)
         return REDISMODULE_ERR;
-    }
-
     return REDISMODULE_OK;
 }</code></pre>
-
-        <p><code>RedisModule_CreateCommand</code> 的参数列表揭示了 Module 命令的注册细节：</p>
-
-        <pre><code>/* module.c — RedisModule_CreateCommand 签名 */
-int RM_CreateCommand(RedisModuleCtx *ctx, const char *name,
-                     RedisModuleCmdFunc cmdfunc, const char *strategy,
-                     int firstkey, int lastkey, int keystep);</code></pre>
-
-        <ul>
-            <li><code>strategy</code>：标志位字符串，如 <code>"write"</code>（写命令）、<code>"readonly"</code>（只读）、<code>"denyoom"</code>（内存不足时拒绝）等。这会影响命令在集群模式和只读从库中的行为。</li>
-            <li><code>firstkey / lastkey / keystep</code>：告诉 Redis 命令参数中的 key 的位置，用于集群模式下的 slot 计算。比如 <code>firstkey=1, lastkey=1, keystep=1</code> 表示第一个参数之后的第一个参数是 key。</li>
-        </ul>
-
-        <p>除了命令注册，Module API 还提供了几大类功能：</p>
-
-        <table>
-            <thead>
-                <tr>
-                    <th>API 类别</th>
-                    <th>核心函数</th>
-                    <th>用途</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>初始化与元信息</td>
-                    <td><code>RedisModule_Init</code>, <code>RedisModule_SetModuleAttribs</code></td>
-                    <td>Module 注册、版本声明</td>
-                </tr>
-                <tr>
-                    <td>命令注册</td>
-                    <td><code>RedisModule_CreateCommand</code></td>
-                    <td>将 C 函数注册为 Redis 命令</td>
-                </tr>
-                <tr>
-                    <td>键空间操作</td>
-                    <td><code>RedisModule_OpenKey</code>, <code>RedisModule_KeyType</code>, <code>RedisModule_ModuleTypeSetValue</code></td>
-                    <td>读写 Redis 键值对</td>
-                </tr>
-                <tr>
-                    <td>字符串处理</td>
-                    <td><code>RedisModule_CreateString</code>, <code>RedisModule_StringToLongLong</code>, <code>RedisModule_StringPtrLen</code></td>
-                    <td>操作 RedisModuleString 对象</td>
-                </tr>
-                <tr>
-                    <td>内存管理</td>
-                    <td><code>RedisModule_Alloc</code>, <code>RedisModule_Free</code>, <code>RedisModule_Realloc</code>, <code>RedisModule_AutoMemory</code></td>
-                    <td>Module 专用的内存分配与自动释放</td>
-                </tr>
-                <tr>
-                    <td>数据类型</td>
-                    <td><code>RedisModule_CreateDataType</code>, <code>RedisModule_ModuleTypeGetValue</code></td>
-                    <td>注册自定义数据结构，集成 RDB/AOF/复制</td>
-                </tr>
-                <tr>
-                    <td>回复构建</td>
-                    <td><code>RedisModule_ReplyWithLongLong</code>, <code>RedisModule_ReplyWithString</code>, <code>RedisModule_ReplyWithArray</code></td>
-                    <td>向客户端返回结果</td>
-                </tr>
-                <tr>
-                    <td>阻塞客户端</td>
-                    <td><code>RedisModule_BlockClient</code>, <code>RedisModule_UnblockClient</code></td>
-                    <td>在后台线程中处理，完成后恢复客户端</td>
-                </tr>
-                <tr>
-                    <td>通知与钩子</td>
-                    <td><code>RedisModule_SubscribeToKeyspaceEvents</code>, <code>RedisModule_RegisterAuthCallback</code></td>
-                    <td>订阅键空间事件、钩入认证流程</td>
-                </tr>
-            </tbody>
-        </table>
-
-        <h2>自定义命令实现</h2>
-
-        <p>定义一个 Module 命令其实就是实现一个 <code>int (*RedisModuleCmdFunc)(RedisModuleCtx *ctx, RedisModuleString **argv, int argc)</code> 函数。来看一个完整的例子：</p>
-
-        <pre><code>/* 实现 MYSET.GET — 获取自定义数据类型的值 */
-int MySet_GetValue(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-    /* 检查参数数量 */
-    if (argc != 2) {
-        RedisModule_WrongArity(ctx);
-        return REDISMODULE_ERR;
-    }
-
-    /* 打开 key（第一个参数之后是 key 名） */
-    RedisModuleKey *key = RedisModule_OpenKey(ctx, argv[1],
-                                              REDISMODULE_READ);
-
-    /* 检查 key 的类型 */
-    int keytype = RedisModule_KeyType(key);
-    if (keytype == REDISMODULE_KEYTYPE_EMPTY) {
-        RedisModule_ReplyWithNull(ctx);
-        RedisModule_CloseKey(key);
-        return REDISMODULE_OK;
-    }
-
-    /* 读取 Module 自定义类型的值 */
-    MySet *ms = RedisModule_ModuleTypeGetValue(key);
-    if (ms == NULL) {
-        RedisModule_ReplyWithNull(ctx);
-    } else {
-        RedisModule_ReplyWithLongLong(ctx, ms-&gt;count);
-    }
-
-    RedisModule_CloseKey(key);
-    return REDISMODULE_OK;
-}</code></pre>
-
-        <p>这里有一个非常实用的机制叫 <strong>自动内存管理</strong>（AutoMemory）。当你在 Module 函数开头调用 <code>RedisModule_AutoMemory(ctx)</code> 后，Module 上下文中创建的 RedisModuleString、RedisModuleKey 等对象会在函数返回时<strong>自动释放</strong>。这极大地简化了 Module 代码中的内存管理——你不需要像普通 C 代码那样小心翼翼地在每个 return 之前释放资源。</p>
-
-        <div class="tip">
-            <strong>小贴士：</strong>自动内存管理虽然方便，但要警惕它的陷阱。如果你在 Module 函数中创建了一个 <code>RedisModuleString</code> 并将其存入全局变量，开启 AutoMemory 后函数返回时会自动释放这个字符串——导致全局指针悬空。对于需要跨越函数调用存活的对象，应该使用 <code>RedisModule_RetainString</code> 增加引用计数，或者禁用 AutoMemory 手动管理。
-        </div>
-
-        <h2>自定义数据类型</h2>
-
-        <p>Module 最强大的能力之一就是创建自定义数据类型。这种数据类型与 Redis 原生的 String、Hash、List 等类型享受完全相同的待遇：可以存到 RDB 文件中、可以写入 AOF 日志、可以通过主从复制同步到从库。要实现这一点，你需要提供一组<strong>类型方法回调</strong>：</p>
-
-        <pre><code>/* 注册自定义数据类型的回调结构体 */
-static RedisModuleTypeMethods mytype_methods = {
-    .version = REDISMODULE_TYPE_METHOD_VERSION,
-    .rdb_load = MySet_RDBLoad,     /* 从 RDB 文件反序列化 */
-    .rdb_save = MySet_RDBSave,     /* 序列化到 RDB 文件 */
-    .aof_rewrite = MySet_AOFRewrite, /* AOF 重写回调 */
-    .free = MySet_Free,            /* 释放自定义类型的内存 */
-    .digest = MySet_Digest         /* DEBUG DIGEST 命令的哈希值 */
-};
-
-/* 在 OnLoad 中注册自定义类型 */
-int RedisModule_OnLoad(...) {
-    /* 注册类型，返回类型 ID */
-    RedisModuleTypeID *type_id = RedisModule_CreateDataType(
-        ctx, "myset", 0, &amp;mytype_methods);
-    /* 将 type_id 保存到全局变量供后续使用 */
-    ...
-}</code></pre>
-
-        <p>这些回调会在 Redis 的持久化、复制、调试过程中被调用。其中最核心的是 <code>rdb_save</code> 和 <code>rdb_load</code>——它们决定了你的自定义数据类型如何序列化和反序列化：</p>
-
-        <pre><code>/* RDB 保存回调：将 MySet 结构写入 rdb 流 */
-void MySet_RDBSave(RedisModuleIO *io, void *ptr) {
-    MySet *ms = (MySet *)ptr;
-    RedisModule_SaveUnsigned(io, ms-&gt;count);     /* 保存元素数量 */
-    for (int i = 0; i &lt; ms-&gt;count; i++) {
-        RedisModule_SaveString(io, ms-&gt;elements[i]); /* 保存每个元素 */
-    }
-}
-
-/* RDB 加载回调：从 rdb 流恢复 MySet 结构 */
-void *MySet_RDBLoad(RedisModuleIO *io, int encver) {
-    MySet *ms = RedisModule_Alloc(sizeof(MySet));
-    ms-&gt;count = RedisModule_LoadUnsigned(io);   /* 读取元素数量 */
-    ms-&gt;elements = RedisModule_Alloc(sizeof(void*) * ms-&gt;count);
-    for (int i = 0; i &lt; ms-&gt;count; i++) {
-        ms-&gt;elements[i] = RedisModule_LoadString(io); /* 读取每个元素 */
-    }
-    return ms;
-}</code></pre>
-
-        <h2>Module 阻塞命令</h2>
-
-        <p>某些操作需要很长时间（比如外部 API 调用、磁盘 IO、复杂的计算），在 Redis 的单线程事件循环中执行会导致整个实例阻塞。Module API 提供了 <strong>阻塞客户端</strong>机制来解决这个问题：</p>
-
-        <pre><code>/* 模块阻塞命令：异步处理 */
-int MyBlockCmd(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-    /* 创建一个后台任务 */
-    struct my_task *task = RedisModule_Alloc(sizeof(*task));
-    task-&gt;key = argv[1];
-    RedisModule_RetainString(ctx, argv[1]);
-
-    /* 阻塞当前客户端 */
-    RedisModuleBlockedClient *bc = RedisModule_BlockClient(
-        ctx,                          /* 当前上下文 */
-        MyBlockCmd_Reply,             /* 解除阻塞后的回复函数 */
-        MyBlockCmd_Timeout,           /* 超时回调 */
-        MyBlockCmd_FreeData,          /* 释放数据的回调 */
-        0                             /* 超时时间（0 表示不超时） */
-    );
-    task-&gt;bc = bc;
-
-    /* 启动后台线程处理（使用 pthread） */
-    pthread_t tid;
-    pthread_create(&amp;tid, NULL, MyBlockCmd_ThreadProc, task);
-    pthread_detach(tid);  /* 分离线程，自动回收资源 */
-
-    return REDISMODULE_OK;
-}
-
-/* 后台线程处理函数 */
-void *MyBlockCmd_ThreadProc(void *arg) {
-    struct my_task *task = arg;
-    /* 执行耗时操作... */
-    /* 解除阻塞客户端（传递结果数据） */
-    RedisModule_UnblockClient(task-&gt;bc, task);
-    return NULL;
-}</code></pre>
-
-        <p>当后台线程调用 <code>RedisModule_UnblockClient</code> 时，Redis 会在自己的事件循环中异步调用 <code>MyBlockCmd_Reply</code> 函数来构造回复并发送给客户端。整个过程不会阻塞 Redis 的主事件循环，完美解决了耗时操作的问题。</p>
-
-        <h2>Redis Stack 模块生态</h2>
-
-        <p>如果说 Redis 本体内核是"操作系统"，那么 Redis Stack 就是预装了一系列常用"应用程序"的发行版。每个 Stack 模块都是基于 Module API 构建的工业级实现：</p>
-
-        <table>
-            <thead>
-                <tr>
-                    <th>模块</th>
-                    <th>提供能力</th>
-                    <th>核心数据结构</th>
-                    <th>典型命令</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>RediSearch</td>
-                    <td>全文搜索 + 向量检索 + 聚合</td>
-                    <td>倒排索引、HNSW 图、Trie 字典树</td>
-                    <td>FT.SEARCH, FT.AGGREGATE, FT.CREATE</td>
-                </tr>
-                <tr>
-                    <td>RedisJSON</td>
-                    <td>JSON 文档存储与路径查询</td>
-                    <td>JSON 解析树</td>
-                    <td>JSON.SET, JSON.GET, JSON.ARRAPPEND</td>
-                </tr>
-                <tr>
-                    <td>RedisTimeSeries</td>
-                    <td>时序数据存储与聚合</td>
-                    <td>压缩时间序列块</td>
-                    <td>TS.CREATE, TS.RANGE, TS.MRANGE</td>
-                </tr>
-                <tr>
-                    <td>RedisBloom</td>
-                    <td>概率数据结构</td>
-                    <td>Bloom Filter、Cuckoo Filter、Count-Min Sketch</td>
-                    <td>BF.ADD, BF.EXISTS, CMS.INCRBY</td>
-                </tr>
-                <tr>
-                    <td>RedisGraph (已退役)</td>
-                    <td>图数据库（7.0 后不再维护）</td>
-                    <td>属性图矩阵</td>
-                    <td>GRAPH.QUERY</td>
-                </tr>
-            </tbody>
-        </table>
-
-        <div class="warning">
-            <strong>踩坑实录：</strong>我见过一个令人印象深刻的 Module 事故——某团队写了一个自定义 Module 用于实时统计，在 <code>free</code> 回调中没有正确释放所有子对象，导致每次自定义类型被删除时都泄漏一部分内存。更可怕的是，这个 Module 被用于高频的"创建-删除"场景，内存泄漏速度很快。最终在线上运行两周后，Redis 进程的 RSS 从 2GB 暴涨到了 18GB，触发了 OOM killer。排查时用 <code>INFO MEMORY</code> 发现 <code>used_memory</code> 才 3GB，但 <code>rss</code> 已经到了 18GB——这正是典型的内存碎片 + 泄漏信号。修复方案：在 <code>free</code> 回调中使用 <code>RedisModule_Free</code> 释放每个子对象，并用 valgrind 验证所有路径。<strong>Module 代码必须像内核代码一样谨慎，因为你跑在 Redis 的地址空间里，任何泄漏都是 Redis 的泄漏。</strong>
-        </div>
-
-        <h2>实战：编写一个简单的计数器模块</h2>
-
-        <p>让我们动手写一个完整的 Module。这个模块实现基于 HLL（HyperLogLog）思想的去重计数器——记录某个 key 的不重复元素数量（简化版，仅用固定大小的 bitmap 近似计数）：</p>
-
-        <pre><code>/* dcard.c — 去重计数器 Module 完整实现 */
-#include "../src/redismodule.h"
-#include &lt;string.h&gt;
-#include &lt;stdio.h&gt;
-
-/* 计数器的数据结构：一个 64KB 的 bitmap + 计数 */
-typedef struct {
-    unsigned char bitmap[65536];  /* 64KB bitmap */
-    long long count;              /* 近似计数 */
-} DCard;
-
-/* 自定义类型的回调 */
-void DCard_Free(void *ptr) {
-    /* 不需要额外释放，因为整个结构体在栈上连续分配 */
-}
-
-void DCard_RDBSave(RedisModuleIO *io, void *ptr) {
-    DCard *dc = (DCard *)ptr;
-    RedisModule_SaveUnsigned(io, dc-&gt;count);
-    RedisModule_SaveStringBuffer(io, (char *)dc-&gt;bitmap, 65536);
-}
-
-void *DCard_RDBLoad(RedisModuleIO *io, int encver) {
-    DCard *dc = RedisModule_Alloc(sizeof(DCard));
-    dc-&gt;count = RedisModule_LoadUnsigned(io);
-    size_t len;
-    char *data = RedisModule_LoadStringBuffer(io, &amp;len);
-    memcpy(dc-&gt;bitmap, data, 65536);
-    RedisModule_Free(data);
-    return dc;
-}
-
-/* DCARD.ADD key element — 添加元素 */
-int DCard_Add(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-    if (argc != 3) return RedisModule_WrongArity(ctx);
-
-    RedisModuleKey *key = RedisModule_OpenKey(ctx, argv[1],
-        REDISMODULE_READ | REDISMODULE_WRITE);
-
-    DCard *dc;
-    if (RedisModule_KeyType(key) == REDISMODULE_KEYTYPE_EMPTY) {
-        dc = RedisModule_Alloc(sizeof(DCard));
-        memset(dc-&gt;bitmap, 0, 65536);
-        dc-&gt;count = 0;
-        RedisModule_ModuleTypeSetValue(key, DCardType, dc);
-    } else {
-        dc = RedisModule_ModuleTypeGetValue(key);
-    }
-
-    /* 使用元素的哈希值映射到 bitmap 位置 */
-    size_t len;
-    const char *elem = RedisModule_StringPtrLen(argv[2], &amp;len);
-    unsigned long h = 0;
-    for (size_t i = 0; i &lt; len; i++) {
-        h = h * 31 + (unsigned char)elem[i];
-    }
-    int idx = h % 65536;
-    int byte_pos = idx / 8;
-    int bit_pos = idx % 8;
-
-    if (!(dc-&gt;bitmap[byte_pos] &amp; (1 &lt;&lt; bit_pos))) {
-        dc-&gt;bitmap[byte_pos] |= (1 &lt;&lt; bit_pos);
-        dc-&gt;count++;
-    }
-
-    RedisModule_ReplyWithLongLong(ctx, dc-&gt;count);
-    RedisModule_CloseKey(key);
-    return REDISMODULE_OK;
-}
-
-/* DCARD.COUNT key — 获取计数器值 */
-int DCard_Count(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-    if (argc != 2) return RedisModule_WrongArity(ctx);
-
-    RedisModuleKey *key = RedisModule_OpenKey(ctx, argv[1], REDISMODULE_READ);
-    if (RedisModule_KeyType(key) == REDISMODULE_KEYTYPE_EMPTY) {
-        RedisModule_ReplyWithLongLong(ctx, 0);
-        RedisModule_CloseKey(key);
-        return REDISMODULE_OK;
-    }
-
-    DCard *dc = RedisModule_ModuleTypeGetValue(key);
-    RedisModule_ReplyWithLongLong(ctx, dc-&gt;count);
-    RedisModule_CloseKey(key);
-    return REDISMODULE_OK;
-}
-
-/* Module 入口 */
-static RedisModuleType *DCardType;
-
-int RedisModule_OnLoad(RedisModuleCtx *ctx,
-                       RedisModuleString **argv, int argc) {
-    if (RedisModule_Init(ctx, "dcard", 1, REDISMODULE_APIVER_1)
-        == REDISMODULE_ERR)
-        return REDISMODULE_ERR;
-
-    RedisModuleTypeMethods methods = {
-        .version = REDISMODULE_TYPE_METHOD_VERSION,
-        .rdb_load = DCard_RDBLoad,
-        .rdb_save = DCard_RDBSave,
-        .free = DCard_Free,
-    };
-
-    DCardType = RedisModule_CreateDataType(ctx, "dcard", 0, &amp;methods);
-    if (DCardType == NULL) return REDISMODULE_ERR;
-
-    if (RedisModule_CreateCommand(ctx, "dcard.add",
-                                  DCard_Add, "write deny-oom", 1, 1, 1)
-        == REDISMODULE_ERR) return REDISMODULE_ERR;
-
-    if (RedisModule_CreateCommand(ctx, "dcard.count",
-                                  DCard_Count, "readonly", 1, 1, 1)
-        == REDISMODULE_ERR) return REDISMODULE_ERR;
-
-    return REDISMODULE_OK;
-}</code></pre>
-
-        <p>编译和加载这个 Module：</p>
-
-        <pre><code># 编译（在 Redis 源码根目录）
-gcc -shared -fPIC -I. -o dcard.so dcard.c
-
-# 加载到 Redis
-redis-cli MODULE LOAD /path/to/dcard.so
-
-# 测试
-redis-cli DCARD.ADD myset hello
-redis-cli DCARD.ADD myset world
-redis-cli DCARD.COUNT myset</code></pre>
-
-        <div class="tip">
-            <strong>小贴士：</strong>Module 开发最友好的调试方式是 <code>MODULE LOAD</code> 和 <code>MODULE UNLOAD</code> 的组合。修改代码后不需要重启 Redis：先 <code>MODULE UNLOAD mymodule</code>，重新编译，再 <code>MODULE LOAD /path/module.so</code>。但要注意，<code>UNLOAD</code> 要求 Module 没有正在使用的自定义类型数据，否则会失败。
-        </div>
-
-        <p>从 Lua 脚本到 Module Extension，我们看到 Redis 提供了一条从"在 Redis 内运行脚本"到"用 C 重写 Redis 的一部分"的完整能力阶梯。最后一章，我们不仅要展望 Redis 8.x 的前沿特性，还要把全课程学到的所有知识浓缩为一个动手项目——手写一个 Mini-Redis，让你真正从源码阅读者转变为源码创造者。</p>
-
-        <div class="footer-nav">
-            <a href="26.html">← 上一章</a>
-            <a href="index.html">📖 返回目录</a>
-            <a href="28.html">下一章 →</a>
-        </div>
-    </div>
-</div>
-</div>
-</body>
-</html>
+<p>注册命令时最后的三个整数是 <code>firstkey</code>/<code>lastkey</code>/<code>keystep</code>，用于告诉集群与 ACL 这个命令会碰哪些键；上面的示例不操作键，所以都是 <code>0</code>。命令名建议用 <code>模块名.命令</code> 前缀避免冲突。命令旗标（如 <code>readonly</code>、<code>write</code>、<code>fast</code>、<code>deny-oom</code>）会影响 ACL 分类、只读副本可否执行与内存不足时的行为。</p>
+</section>
+<section id="datatype" aria-labelledby="h-datatype"><h2 id="h-datatype">自定义数据类型与持久化回调</h2>
+<p>要新增一种值类型，用 <code>RedisModule_CreateDataType</code> 注册：名字必须正好 9 个字符，<code>encver</code> 是编码版本号；真正的行为由 <code>RedisModuleTypeMethods</code> 里的回调决定。最关键的是 <code>rdb_save</code> 与 <code>rdb_load</code>：前者把你的内存结构写成简单值，后者从字节流重建它。若格式演进，靠 <code>encver</code> 区分并用 <code>rdb_load</code> 兼容旧版本。</p>
+<p>回调至少还包括：<code>free</code>（释放值）、<code>mem_usage</code>（对 <code>MEMORY USAGE</code> 与淘汰决策有意义）、<code>digest</code>（调试用）、<code>copy</code>（<code>COPY</code> 命令）以及可选的 <code>defrag</code>、<code>aof_rewrite</code>。把这些回调写对，你的类型才能在重启、主从全量同步、AOF 重写中表现正确——写一个只在内存里能跑、一重启就丢的类型，是模块开发最常见的坑。</p>
+<figure class="figure"><svg role="img" aria-labelledby="fig27-1-t" aria-describedby="fig27-1-d" viewBox="0 0 720 210" xmlns="http://www.w3.org/2000/svg"><title id="fig27-1-t">自定义类型值的生命周期与回调</title><desc id="fig27-1-d">键指向模块类型值；保存时用 rdb_save 写成字节，加载时用 rdb_load 重建，释放时用 free；encver 用于区分格式版本。</desc><rect width="720" height="210" rx="16" fill="#f6fbf9"/><g font-family="system-ui,sans-serif" font-size="12" text-anchor="middle"><rect x="24" y="40" width="150" height="50" rx="8" fill="#e1f4f0" stroke="#167e80"/><text x="99" y="70" fill="#1d3438">键 → 模块值</text><rect x="215" y="40" width="130" height="50" rx="8" fill="#efecf9" stroke="#6654a7"/><text x="280" y="70" fill="#1d3438">rdb_save</text><rect x="385" y="40" width="130" height="50" rx="8" fill="#fcf0e9" stroke="#c9664a"/><text x="450" y="70" fill="#1d3438">字节流</text><rect x="555" y="40" width="140" height="50" rx="8" fill="#efecf9" stroke="#6654a7"/><text x="625" y="70" fill="#1d3438">rdb_load</text><g stroke="#167e80" stroke-width="2" fill="none"><path d="M174 65 H215"/><path d="M345 65 H385"/><path d="M515 65 H555"/></g><rect x="215" y="130" width="290" height="46" rx="8" fill="#fff" stroke="#52666b"/><text x="360" y="150" fill="#203035">free / mem_usage / digest / copy</text><text x="360" y="168" font-size="11" fill="#52666b">生命周期与内存统计的其余回调</text><path d="M360 90 V130" stroke="#167e80" stroke-width="2" fill="none"/></g></svg><figcaption>图 1 · 自定义类型的持久化链路。内存中的结构不能直接落盘，必须由 <code>rdb_save</code>/<code>rdb_load</code> 定义外部格式；<code>encver</code> 让新旧格式可共存。</figcaption></figure>
+</section>
+<section id="keyspace" aria-labelledby="h-keyspace"><h2 id="h-keyspace">键空间访问与线程安全上下文</h2>
+<p>模块不能直接拿 <code>redisDb</code>，而要通过 <code>RedisModule_OpenKey(ctx, keyname, REDISMODULE_READ|REDISMODULE_WRITE)</code> 获取句柄，再用 <code>RedisModule_KeyType</code>、<code>RedisModule_StringSet</code>、<code>RedisModule_StringPtrLen</code> 等读写；配合 <code>RedisModule_AutoMemory</code>，键句柄与临时对象会在命令返回时自动释放。要在模块里复用现有命令，可以用 <code>RedisModule_Call</code>。</p>
+<p>真正需要小心的是<strong>多线程</strong>：模块内启动的后台线程不能随意碰键空间，必须通过 <code>RedisModule_GetThreadSafeContext</code> 拿到上下文，并用 <code>RedisModule_ThreadSafeContextLock</code> / <code>Unlock</code> 在主线程空闲时进入临界区。否则会与主线程的数据结构并发访问，产生难复现的崩溃。</p>
+</section>
+<section id="blocking" aria-labelledby="h-blocking"><h2 id="h-blocking">阻塞命令：block / unblock</h2>
+<p>有些操作（如访问外部服务、等待另一系统）不能让主线程停下来等。模块可以用 <code>RedisModule_BlockClient</code> 把调用方客户端置为阻塞态并立即返回，让事件循环继续服务其他客户端；后台完成后用 <code>RedisModule_UnblockClient</code> 唤醒，再通过回复回调把结果写回。基本形状：</p>
+<pre><code>/* 异步回复回调：在这里 RedisModule_ReplyWith*
+   timeout 回调：超时时如何回复；free_privdata：释放私有数据 */
+RedisModuleBlockedClient *bc =
+    RedisModule_BlockClient(ctx, reply_cb, timeout_cb, free_privdata, 5000);
+/* 把 bc 交给后台线程；完成后：RedisModule_UnblockClient(bc, privdata); */</code></pre>
+<p>这与第十章 <code>BLPOP</code> 的思路一致：<strong>阻塞的是客户端状态，不是事件循环</strong>。键相关的等待还可以用 <code>RedisModule_BlockClientOnKeys</code>，当目标键被写入时由 <code>RedisModule_SignalKeyAsReady</code> 触发。需要提醒：阻塞命令的回复发生在回调里，错误处理与超时路径必须都写清楚，否则客户端可能永久挂起。</p>
+<figure class="figure"><svg role="img" aria-labelledby="fig27-2-t" aria-describedby="fig27-2-d" viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg"><title id="fig27-2-t">模块阻塞命令的执行流</title><desc id="fig27-2-d">客户端发出阻塞命令后主线程立即返回到事件循环继续服务其他客户端；后台线程完成后通过 UnblockClient 触发回复回调，把结果写回。</desc><rect width="720" height="200" rx="16" fill="#f6fbf9"/><g font-family="system-ui,sans-serif" font-size="12" text-anchor="middle"><rect x="24" y="40" width="150" height="50" rx="8" fill="#e1f4f0" stroke="#167e80"/><text x="99" y="70" fill="#1d3438">BlockClient</text><rect x="205" y="40" width="180" height="50" rx="8" fill="#efecf9" stroke="#6654a7"/><text x="295" y="62" fill="#1d3438">事件循环继续</text><text x="295" y="80" font-size="11" fill="#52666b">服务其他客户端</text><rect x="415" y="40" width="150" height="50" rx="8" fill="#fcf0e9" stroke="#c9664a"/><text x="490" y="62" fill="#1d3438">后台线程</text><text x="490" y="80" font-size="11" fill="#52666b">完成工作</text><rect x="595" y="40" width="100" height="50" rx="8" fill="#fff" stroke="#167e80"/><text x="645" y="70" font-size="11" fill="#1d3438">Unblock</text><g stroke="#167e80" stroke-width="2" fill="none"><path d="M174 65 H205"/><path d="M385 65 H415"/><path d="M565 65 H595"/></g><text x="360" y="135" fill="#52666b">回复发生在回调里：reply_cb / timeout_cb / free_privdata 都要处理</text></g></svg><figcaption>图 2 · 阻塞命令把等待从主线程移走。注意超时与错误也走回调；只要有一条路径漏掉回复，客户端就会挂起。</figcaption></figure>
+</section>
+<section id="ecosystem" aria-labelledby="h-ecosystem"><h2 id="h-ecosystem">模块生态与许可边界</h2>
+<p>基于 Module API，社区形成了若干常用模块，例如 RediSearch（搜索/二级索引）、RedisJSON（JSON 文档）、RedisTimeSeries（时序）与 RedisBloom（概率数据结构）。它们都以模块形式加载，扩展的是 Redis 的能力面，而不是改变核心命令语义。</p>
+<p>务必注意<strong>版本与许可</strong>：Redis 本体在 7.4 之前是 BSD，7.4 起改为 RSALv2/SSPLv1 的双许可，Redis 8 又增加了 AGPLv3 选项；各模块有各自独立的许可与发行方式。不要把“核心是开源的”直接套到某个模块上，引用时以该项目的官方许可为准。</p>
+<div class="simulator" data-mod-demo><label for="sim-mod">选择一种需求，看 Module 是否合适</label><select id="sim-mod"><option value="cmd">需要新命令语义</option><option value="type">需要新的值类型</option><option value="slow">需要调外部服务</option><option value="safe">只想组合已有命令</option></select><div data-output class="sim-output" role="status" aria-live="polite"></div><p class="muted" style="font-size:.79rem;margin-bottom:0">交互仅用于复习选型，不涉及生产部署。</p></div>
+</section>
+<section id="experiment" aria-labelledby="h-experiment"><h2 id="h-experiment">对照实验：构建并加载示例模块</h2>
+<p>Redis 源码树里自带示例模块（位于 <code>src/modules/</code>，如 <code>hello</code>），每个目录带自己的 Makefile。构建出一个动态库，再在临时实例上加载并查看状态。具体命令名以示例源码中的 <code>RedisModule_CreateCommand</code> 为准。</p>
+<pre><code>cd src/modules/hello &amp;&amp; make &amp;&amp; ls *.so
+cd -  # 回到仓库根
+./src/redis-server --port 6390 --save &quot;&quot; --appendonly no
+./src/redis-cli -p 6390 MODULE LOAD &quot;$PWD/src/modules/hello/hello.so&quot;   # 路径按构建产物调整
+./src/redis-cli -p 6390 MODULE LIST
+./src/redis-cli -p 6390 MODULE UNLOAD hello   # 模块名以 MODULE LIST 为准
+./src/redis-cli -p 6390 SHUTDOWN NOSAVE</code></pre>
+<p>预期观察：<code>MODULE LIST</code> 会列出已加载模块的名字、版本与路径；加载成功后模块注册的命令可用，<code>UNLOAD</code> 后命令消失。若构建时报找不到 <code>redismodule.h</code>，说明模块的 include 路径需要指向 Redis 的 <code>src</code>（以该示例 Makefile 为准）。若实例配置禁止运行时加载模块，则改用 <code>redis.conf</code> 的 <code>loadmodule</code> 在启动时加载，并把这一步标为“未验证”。</p>
+</section>
+<section id="limits" aria-labelledby="h-limits"><h2 id="h-limits">模块能力的边界</h2>
+<ul><li><strong>同进程即同命运</strong>：模块崩溃或死循环会拖垮整个 Redis 实例；模块内不做超时隔离。</li><li><strong>ABI 需匹配</strong>：模块应针对同版本的 <code>redismodule.h</code> 构建；升级 Redis 后需重新构建。</li><li><strong>持久化靠自己</strong>：不实现 <code>rdb_save</code>/<code>rdb_load</code>，自定义类型就无法在重启/同步中存活。</li><li><strong>线程需显式同步</strong>：后台线程必须用线程安全上下文并加锁，否则与主线程并发访问。</li><li><strong>类型名长度固定</strong>：<code>RedisModule_CreateDataType</code> 的名字必须正好 9 字符。</li><li><strong>许可分层</strong>：Redis 本体与各模块的许可不同，需分别确认。</li><li><strong>版本边界</strong>：函数名与 API 版本均针对 <code>redis/redis@7.2.4</code>；更高版本可能新增或变更 API。</li></ul>
+<p>下一章是收尾：一方面看 Redis 8 的方向，另一方面从零写一个极简 Mini-Redis，把事件循环、协议解析、命令表与 KV 存储这四块串起来。</p>
+</section>
+<section class="sources" id="sources" aria-labelledby="h-sources"><h2 id="h-sources">源码与参考</h2><p>以下链接固定到 <code>redis/redis@7.2.4</code>；模块项目另附各自仓库。</p><ol><li><a href="https://github.com/redis/redis/blob/7.2.4/src/redismodule.h">redismodule.h：Module API 与 REDISMODULE_APIVER_1</a></li><li><a href="https://github.com/redis/redis/blob/7.2.4/src/module.c">module.c：OnLoad、命令注册、阻塞与线程安全上下文</a></li><li><a href="https://github.com/redis/redis/blob/7.2.4/src/modules/hello/hello.c">src/modules/hello：示例模块与 Makefile</a></li><li><a href="https://github.com/redis/redis/blob/7.2.4/redis.conf">redis.conf：loadmodule 等模块加载配置</a></li><li><a href="https://redis.io/legal/licenses/">Redis 官方版本与许可边界</a></li></ol></section>
+<nav class="pager" aria-label="前后章节"><a href="26.html">← 第 26 章</a><a href="28.html">第 28 章 →</a></nav>
+</article></main></div>
+<footer class="footer"><div class="max"><a href="../index.html">返回课程主页</a></div></footer>
+<script src="../assets/js/third-article.js" defer></script>
+<script>(()=>{"use strict";const map={cmd:"可用 Module 注册新命令（CreateCommand）；若只是组合已有命令且不需新类型，Lua/Functions 更轻。",type:"需要新值类型时必须用 Module：CreateDataType + rdb_save/rdb_load 等回调才能持久化。",slow:"阻塞命令用 BlockClient/UnblockClient 把等待移出主线程；后台线程访问键需线程安全上下文。",safe:"优先考虑 Lua 脚本或 Functions：无需编译动态库，也不会因模块崩溃拖垮整个实例。"};const box=document.querySelector("[data-mod-demo]");if(box){const s=box.querySelector("select"),o=box.querySelector("[data-output]");const up=()=>{o.textContent=map[s.value]||"";};s.addEventListener("change",up);up();}})();</script>
+</body></html>
