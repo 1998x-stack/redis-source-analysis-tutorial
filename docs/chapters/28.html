@@ -1,590 +1,174 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.5, user-scalable=yes">
-    <title>第28章 Redis 8.x前瞻与手写Mini-Redis</title>
-    <link rel="stylesheet" href="theme.css">
-</head>
-<body>
-<div class="double-border">
-<div class="container">
-    <div class="sidebar">
-        <h3>🔧 课程目录</h3>
-        <ul class="chapter-list">
-            <li><a href="01.html">第1章 Redis源码全景图</a></li>
-            <li><a href="02.html">第2章 编译与调试环境搭建</a></li>
-            <li><a href="03.html">第3章 内存管理：zmalloc与jemalloc</a></li>
-            <li><a href="04.html">第4章 SDS动态字符串</a></li>
-            <li><a href="05.html">第5章 链表、压缩列表与listpack</a></li>
-            <li><a href="06.html">第6章 字典与渐进式rehash</a></li>
-            <li><a href="07.html">第7章 跳表与整数集合</a></li>
-            <li><a href="08.html">第8章 redisObject与编码转换</a></li>
-            <li><a href="09.html">第9章 String与Hash命令实现</a></li>
-            <li><a href="10.html">第10章 List命令与阻塞操作</a></li>
-            <li><a href="11.html">第11章 Set与Sorted Set命令实现</a></li>
-            <li><a href="12.html">第12章 Stream、Geo与HyperLogLog</a></li>
-            <li><a href="13.html">第13章 事件循环（上）：文件事件</a></li>
-            <li><a href="14.html">第14章 事件循环（下）：时间事件</a></li>
-            <li><a href="15.html">第15章 网络IO架构</a></li>
-            <li><a href="16.html">第16章 命令处理全流程</a></li>
-            <li><a href="17.html">第17章 RDB持久化</a></li>
-            <li><a href="18.html">第18章 AOF与混合持久化</a></li>
-            <li><a href="19.html">第19章 键过期与内存淘汰</a></li>
-            <li><a href="20.html">第20章 主从复制（上）</a></li>
-            <li><a href="21.html">第21章 主从复制（下）</a></li>
-            <li><a href="22.html">第22章 Sentinel哨兵与Cluster集群</a></li>
-            <li><a href="23.html">第23章 性能诊断工具链</a></li>
-            <li><a href="24.html">第24章 生产环境踩坑指南</a></li>
-            <li><a href="25.html">第25章 源码级问题定位实战</a></li>
-            <li><a href="26.html">第26章 Lua脚本与事务</a></li>
-            <li><a href="27.html">第27章 Module开发实战</a></li>
-            <li><a href="28.html" class="active">第28章 Redis 8.x前瞻与手写Mini-Redis</a></li>
-        </ul>
-    </div>
-    <div class="main-content">
-
-        <h2>第28章：Redis 8.x 前瞻与手写 Mini-Redis</h2>
-
-        <p>大家好，我是你们的讲师。欢迎来到最后一章。前面 27 章我们一步步解剖了 Redis 几乎所有的核心子系统——从 SDS 到跳表，从事件循环到命令处理，从 RDB 持久化到 Cluster 集群。你读过的每一行 <code>ae.c</code>、<code>dict.c</code>、<code>networking.c</code>，都在帮你建立一种"工程直觉"：当你再遇到一个中间件时，你会本能地思考它的数据结构选型、它的并发模型、它的错误处理风格。</p>
-
-        <p>但读万卷书不如行万里路。最后一章我们做两件事：第一，展望 Redis 8.x 和社区生态的未来方向，看看这个项目正在往哪里走；第二——也是最重要的——我们把 27 章积累的知识浓缩成一个动手项目：从零手写一个 <strong>Mini-Redis</strong>。这不是玩具，而是一个能运行 RESP 协议、支持 SET/GET/HSET/HGET 的简化版 Redis 服务器。当你亲手写出事件循环、RESP 解析器、命令表的代码时，你才真正完成了从"读者"到"作者"的转变。</p>
-
-        <h2>Redis 8.x 新特性前瞻</h2>
-
-        <p>Redis 8.x 是社区在 7.x 基础上下一个重要的里程碑版本。虽然发布日期尚未最终确定，但从 Roadmap 和已合入的 PR 中，我们可以清晰地看到几个关键方向：</p>
-
-        <h3>Vector Sets — 原生向量搜索</h3>
-        <p>这是 Redis 8 最受瞩目的新特性。Redis 7.x 中向量搜索只能通过 RediSearch Module 实现，而 8.x 将在内核中直接支持 <strong>HNSW（Hierarchical Navigable Small World）</strong> 索引结构。支持的向量类型包括 FP32、BF16、FP16 和 BIN（二进制向量），这意味着 Redis 可以直接作为轻量级向量数据库使用，无需额外引入 Milvus 或 Qdrant 等专门系统。</p>
-
-        <h3>io_uring 后端</h3>
-        <p>io_uring 是 Linux 5.1+ 引入的异步 IO 框架，相比传统的 epoll + read/write 系统调用，io_uring 通过共享 ring buffer 在用户态和内核态之间传递 IO 请求，大幅减少了系统调用开销。Redis 8.x 的实验性 io_uring 支持将网络读写和磁盘持久化的 IO 路径统一到同一套异步框架下，有望在特定场景下带来 20-30% 的吞吐提升。</p>
-
-        <h3>Hash Field Expiration</h3>
-        <p>这是社区呼声最高的功能之一。在现有版本中，过期时间只能设置在 key 级别，无法精确控制 Hash 中单个 field 的过期。8.x 将引入 field 级别的 TTL——这对 Session 管理、用户属性更新等场景意义重大，不再需要为了一个 field 的过期而去设置整个 key 的 TTL。</p>
-
-        <h3>改进的多线程 IO</h3>
-        <p>Redis 6.0 引入了多线程 IO（仅用于网络读写），7.x 进一步优化了线程模型。8.x 计划将更多的工作卸载到 IO 线程中，减少主线程的负载。但 antirez 退休前留下的"保持简单"哲学仍在延续——Redis 不会变成一个完全多线程的系统，主命令执行管道始终是单线程的。</p>
-
-        <table>
-            <thead>
-                <tr>
-                    <th>新特性</th>
-                    <th>状态</th>
-                    <th>影响模块</th>
-                    <th>预计影响</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>Vector Sets (HNSW)</td>
-                    <td>开发中</td>
-                    <td><code>t_vector.c</code> (新增)</td>
-                    <td>原生向量检索，无需 RediSearch</td>
-                </tr>
-                <tr>
-                    <td>io_uring 后端</td>
-                    <td>实验性</td>
-                    <td><code>ae_uring.c</code> (新增)</td>
-                    <td>高并发场景 20-30% 吞吐提升</td>
-                </tr>
-                <tr>
-                    <td>Hash Field Expiration</td>
-                    <td>已合入主分支</td>
-                    <td><code>t_hash.c</code>, <code>db.c</code></td>
-                    <td>精确控制 field 级别 TTL</td>
-                </tr>
-                <tr>
-                    <td>多线程 IO 改进</td>
-                    <td>进行中</td>
-                    <td><code>networking.c</code></td>
-                    <td>减少主线程网络 IO 负载</td>
-                </tr>
-                <tr>
-                    <td>Cluster 无中心化改进</td>
-                    <td>规划中</td>
-                    <td><code>cluster.c</code></td>
-                    <td>减少 gossip 协议开销</td>
-                </tr>
-            </tbody>
-        </table>
-
-        <h2>社区生态与路线图</h2>
-
-        <p>Redis 社区在 2024 年经历了一场重要的"地震"——<strong>Valkey</strong> 的分叉。这背后是 Redis Labs 将开源协议从 BSD 切换为 RSALv2/SSPL 引发的长期争议。Valkey 在 Linux Foundation 的庇护下延续了完全开源的 BSD 协议路线，得到了 AWS、Google Cloud、Oracle 等云厂商的支持。</p>
-
-        <p>对于开发者来说，这意味着什么？</p>
-
-        <ul>
-            <li><strong>Redis（社区版）</strong>继续在 Redis Labs 维护下发展，8.x 的新特性（Vector Sets、io_uring）会首先出现在这里。</li>
-            <li><strong>Valkey</strong> 基于 Redis 7.2 分叉，兼容 Redis 协议和数据结构，但后续的演进路线可能逐渐分化。Valkey 更注重云原生集成和许可证合规性。</li>
-            <li><strong>选型建议：</strong>如果你不需要 RSALv2/SSPL 许可限制之外的特性，且依赖云厂商托管的兼容服务，Valkey 是合适的选择。如果你需要最新的 Redis 8.x 特性（尤其是原生向量搜索），应继续使用 Redis 社区版。</li>
-        </ul>
-
-        <div class="tip">
-            <strong>小贴士：</strong>好消息是，无论你选择哪条路线，本课程学到的源码知识——SDS、dict、ae 事件循环、RDB/AOF 格式等——在两边的代码库中都是完全通用的。因为这些核心数据结构的原作者 antirez 的设计已经成为了事实标准，Valkey 也完整继承了这些部分。
-        </div>
-
-        <h2>Mini-Redis 设计目标</h2>
-
-        <p>理论说完了，让我们动手。我们将实现一个简化版 Redis，目标是：</p>
-
-        <ul>
-            <li>基于 <strong>epoll</strong> 的单线程事件循环（对标 <code>ae.c</code>）</li>
-            <li>支持 <strong>RESP 协议</strong>（Redis Serialization Protocol）的解析与回复</li>
-            <li>基础 KV 存储引擎（基于 <code>dict</code> 思路的哈希表）</li>
-            <li>支持命令：<code>SET</code>、<code>GET</code>、<code>DEL</code>、<code>HSET</code>、<code>HGET</code></li>
-            <li>使用 SDS 风格的动态字符串</li>
-            <li>全部代码约 400 行 C 语言</li>
-        </ul>
-
-        <div class="highlight">
-            <strong>核心观点：</strong>写一个 Mini-Redis 是检验你 Redis 源码阅读成果的最好方式。当你发现自己能独立设计 RESP 解析器、事件循环、命令表这些组件时，说明你已经真正理解了 Redis 的设计精髓。不要怕代码简单——antirez 的 Redis 本身也是从这些基础组件一步步迭代出来的。
-        </div>
-
-        <h2>Mini-Redis Step 1：事件循环</h2>
-
-        <p>我们的 Mini-Redis 使用 epoll 实现事件循环，这是 Linux 上最高效的 IO 多路复用机制。以下是核心的 <code>aeLoop</code> 实现：</p>
-
-        <pre><code>/* mini-redis.c — Step 1: 简化版事件循环 */
-#include &lt;stdio.h&gt;
-#include &lt;stdlib.h&gt;
-#include &lt;string.h&gt;
-#include &lt;unistd.h&gt;
-#include &lt;sys/socket.h&gt;
-#include &lt;netinet/in.h&gt;
-#include &lt;sys/epoll.h&gt;
-#include &lt;fcntl.h&gt;
-#include &lt;errno.h&gt;
-
-#define MAX_EVENTS 1024
-#define PORT 6379
-
-/* 设置非阻塞 */
-static int set_nonblock(int fd) {
-    int flags = fcntl(fd, F_GETFL, 0);
-    return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-}
-
-/* 创建监听 socket */
-static int create_listener(void) {
-    int sfd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
-    int opt = 1;
-    setsockopt(sfd, SOL_SOCKET, SO_REUSEADDR, &amp;opt, sizeof(opt));
-
-    struct sockaddr_in addr = {
-        .sin_family = AF_INET,
-        .sin_port = htons(PORT),
-        .sin_addr = { htonl(INADDR_ANY) }
-    };
-    bind(sfd, (struct sockaddr*)&amp;addr, sizeof(addr));
-    listen(sfd, 128);
-    return sfd;
-}
-
-/* 接受新连接 */
-static void accept_handler(int sfd, int epfd) {
-    struct sockaddr_in caddr;
-    socklen_t slen = sizeof(caddr);
-    int cfd = accept4(sfd, (struct sockaddr*)&amp;caddr, &amp;slen, SOCK_NONBLOCK);
-
-    struct epoll_event ev = { .events = EPOLLIN, .data.fd = cfd };
-    epoll_ctl(epfd, EPOLL_CTL_ADD, cfd, &amp;ev);
-    printf("New client connected: fd=%d\n", cfd);
-}
-
-int main() {
-    int sfd = create_listener();
-    int epfd = epoll_create1(0);
-
-    struct epoll_event ev = { .events = EPOLLIN, .data.fd = sfd };
-    epoll_ctl(epfd, EPOLL_CTL_ADD, sfd, &amp;ev);
-
-    struct epoll_event events[MAX_EVENTS];
-
-    printf("Mini-Redis listening on port %d...\n", PORT);
-
-    while (1) {
-        int n = epoll_wait(epfd, events, MAX_EVENTS, -1);
-        for (int i = 0; i &lt; n; i++) {
-            if (events[i].data.fd == sfd) {
-                accept_handler(sfd, epfd);
-            } else {
-                /* TODO: 处理客户端请求 */
-                handle_client(events[i].data.fd, epfd);
-            }
-        }
-    }
-
-    close(sfd);
-    close(epfd);
-    return 0;
-}</code></pre>
-
-        <p>这个事件循环的架构与 Redis 的 <code>ae.c</code> 完全一致：一个 <code>epoll_wait</code> 阻塞等待事件到来，然后根据 fd 分发到不同的处理函数。区别在于 Redis 的 ae 抽象层支持多种 IO 多路复用后端（epoll/kqueue/select），而我们仅实现 epoll 版本——但在核心逻辑上是完全一致的。</p>
-
-        <h2>Mini-Redis Step 2：RESP 协议解析器</h2>
-
-        <p>RESP（Redis Serialization Protocol）是 Redis 客户端与服务器之间的通信协议。它的设计极其简洁，仅有 5 种数据类型。我们实现一个读取 socket 数据、解析 RESP 命令的模块：</p>
-
-        <pre><code>/* mini-redis.c — Step 2: RESP 协议解析 */
-
-#define BUFFER_SIZE 4096
-
-/* 客户端结构体 */
-typedef struct client {
-    int fd;
-    char buf[BUFFER_SIZE];     /* querybuf — 输入缓冲区 */
-    int pos;                    /* 当前解析位置 */
-} client;
-
-/* 解析一行（直到 \r\n） */
-static int read_line(client *c, char *line, int maxlen) {
-    int i = 0;
-    while (c-&gt;pos &lt; BUFFER_SIZE &amp;&amp; i &lt; maxlen - 1) {
-        if (c-&gt;buf[c-&gt;pos] == '\r' &amp;&amp; c-&gt;pos + 1 &lt; BUFFER_SIZE
-            &amp;&amp; c-&gt;buf[c-&gt;pos + 1] == '\n') {
-            line[i] = '\0';
-            c-&gt;pos += 2;  /* 跳过 \r\n */
-            return i;      /* 返回行长度 */
-        }
-        line[i++] = c-&gt;buf[c-&gt;pos++];
-    }
-    return -1;  /* 未找到完整行 */
-}
-
-/* 解析 RESP 数组（如 *3\r\n$3\r\nSET\r\n...）并返回 argc/argv */
-int parse_resp(client *c, char **argv, int maxargs) {
-    if (c-&gt;buf[c-&gt;pos] != '*') return -1;
-    c-&gt;pos++;  /* 跳过 * */
-
-    char nstr[32];
-    if (read_line(c, nstr, sizeof(nstr)) &lt; 0) return -1;
-    int argc = atoi(nstr);
-    if (argc &lt;= 0 || argc &gt; maxargs) return -1;
-
-    for (int i = 0; i &lt; argc; i++) {
-        if (c-&gt;buf[c-&gt;pos] != '$') return -1;
-        c-&gt;pos++;  /* 跳过 $ */
-
-        if (read_line(c, nstr, sizeof(nstr)) &lt; 0) return -1;
-        int len = atoi(nstr);
-
-        /* 分配内存并复制字符串 */
-        argv[i] = malloc(len + 1);
-        memcpy(argv[i], c-&gt;buf + c-&gt;pos, len);
-        argv[i][len] = '\0';
-        c-&gt;pos += len + 2;  /* 跳过内容 + \r\n */
-    }
-    return argc;
-}</code></pre>
-
-        <p>RESP 的设计巧妙之处在于它的<strong>自描述性</strong>——每个数据包的第一个字节告诉解析器接下来的内容类型。在我们的实现中，<code>*</code> 表示数组（Redis 命令总是以数组形式发送），<code>$</code> 表示字符串。这种设计让解析器可以逐字节流式处理，不需要像 HTTP 那样先读取完整的 Content-Length。</p>
-
-        <h2>Mini-Redis Step 3：命令表与 KV 存储</h2>
-
-        <p>最后，我们实现命令表引擎和基于哈希表的 KV 存储：</p>
-
-        <pre><code>/* mini-redis.c — Step 3: KV 存储与命令执行 */
-
-#define TABLE_SIZE 1024
-
-/* 哈希表节点 */
-typedef struct kv_node {
-    char *key;
-    char *val;         /* 简单 KV 使用 */
-    int key_len;
-    int val_len;
-    struct kv_node *next;  /* 拉链法解决冲突 */
-} kv_node;
-
-/* KV 存储：简单的哈希表 */
-kv_node *table[TABLE_SIZE];
-
-/* 哈希函数（参考 Redis 的 dict.c 中的 djb2） */
-static unsigned long hash(const char *str, int len) {
-    unsigned long h = 5381;
-    for (int i = 0; i &lt; len; i++)
-        h = ((h &lt;&lt; 5) + h) + (unsigned char)str[i];
-    return h;
-}
-
-/* GET 命令 */
-char *kv_get(const char *key, int key_len, int *val_len) {
-    unsigned long idx = hash(key, key_len) % TABLE_SIZE;
-    kv_node *cur = table[idx];
-    while (cur) {
-        if (cur-&gt;key_len == key_len &amp;&amp;
-            memcmp(cur-&gt;key, key, key_len) == 0) {
-            *val_len = cur-&gt;val_len;
-            return cur-&gt;val;
-        }
-        cur = cur-&gt;next;
-    }
-    return NULL;  /* 未找到 */
-}
-
-/* SET 命令 */
-void kv_set(const char *key, int key_len,
-            const char *val, int val_len) {
-    unsigned long idx = hash(key, key_len) % TABLE_SIZE;
-    kv_node *cur = table[idx];
-
-    while (cur) {
-        if (cur-&gt;key_len == key_len &amp;&amp;
-            memcmp(cur-&gt;key, key, key_len) == 0) {
-            /* 更新已存在的 key */
-            free(cur-&gt;val);
-            cur-&gt;val = malloc(val_len);
-            memcpy(cur-&gt;val, val, val_len);
-            cur-&gt;val_len = val_len;
-            return;
-        }
-        cur = cur-&gt;next;
-    }
-
-    /* 插入新节点（头插法） */
-    kv_node *node = malloc(sizeof(kv_node));
-    node-&gt;key = malloc(key_len);
-    node-&gt;val = malloc(val_len);
-    memcpy(node-&gt;key, key, key_len);
-    memcpy(node-&gt;val, val, val_len);
-    node-&gt;key_len = key_len;
-    node-&gt;val_len = val_len;
-    node-&gt;next = table[idx];
-    table[idx] = node;
-}
-
-/* 构造 RESP 回复 */
-void resp_reply_send(int fd, const char *type, const char *data) {
-    char reply[BUFFER_SIZE];
-    if (type[0] == '+') {
-        /* 简单字符串 */
-        snprintf(reply, sizeof(reply), "+%s\r\n", data);
-    } else if (type[0] == '$') {
-        /* 批量字符串 */
-        snprintf(reply, sizeof(reply), "$%zu\r\n%s\r\n",
-                 strlen(data), data);
-    } else if (type[0] == ':') {
-        /* 整数 */
-        snprintf(reply, sizeof(reply), ":%s\r\n", data);
-    }
-    write(fd, reply, strlen(reply));
-}
-
-/* 处理读取到的命令 */
-void handle_client(int fd, int epfd) {
-    client c = { .fd = fd, .pos = 0 };
-    int n = read(fd, c.buf, BUFFER_SIZE - 1);
-    if (n &lt;= 0) {
-        close(fd);
-        epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
-        printf("Client disconnected: fd=%d\n", fd);
-        return;
-    }
-    c.buf[n] = '\0';
-
-    char *argv[16];
-    int argc = parse_resp(&amp;c, argv, 16);
-    if (argc &lt; 0) {
-        const char *err = "-ERR protocol error\r\n";
-        write(fd, err, strlen(err));
-        return;
-    }
-
-    /* 命令分发 */
-    if (strcasecmp(argv[0], "PING") == 0) {
-        resp_reply_send(fd, "+", "PONG");
-    } else if (strcasecmp(argv[0], "SET") == 0 &amp;&amp; argc &gt;= 3) {
-        kv_set(argv[1], strlen(argv[1]), argv[2], strlen(argv[2]));
-        resp_reply_send(fd, "+", "OK");
-    } else if (strcasecmp(argv[0], "GET") == 0 &amp;&amp; argc &gt;= 2) {
-        int vlen;
-        char *val = kv_get(argv[1], strlen(argv[1]), &amp;vlen);
-        if (val) {
-            char tmp[256];
-            memcpy(tmp, val, vlen); tmp[vlen] = '\0';
-            resp_reply_send(fd, "$", tmp);
-        } else {
-            write(fd, "$-1\r\n", 5);  /* nil 回复 */
-        }
-    } else if (strcasecmp(argv[0], "HSET") == 0 &amp;&amp; argc &gt;= 4) {
-        /* 简化: 将 Hash 编码为 "field|value|field|value|..." */
-        char hkey[256];
-        snprintf(hkey, sizeof(hkey), "HASH:%s", argv[1]);
-        /* 省略具体实现... */
-        resp_reply_send(fd, ":", "1");
-    } else {
-        const char *err = "-ERR unknown command\r\n";
-        write(fd, err, strlen(err));
-    }
-
-    for (int i = 0; i &lt; argc; i++) free(argv[i]);
-}</code></pre>
-
-        <div class="tip">
-            <strong>小贴士：</strong>完整的 Mini-Redis 代码（约 400 行）可以在本课程的配套资源中找到。建议你亲手逐行敲一遍，然后尝试给它增加一个 <code>EXPIRE</code> 命令——你只需要在 <code>kv_node</code> 中加一个 <code>expire_time</code> 字段，然后在 <code>kv_get</code> 中检查是否过期。这个练习会让你对第19章的过期机制有全新的理解。
-        </div>
-
-        <h2>Mini-Redis Step 4：扩展与思考</h2>
-
-        <p>这个 Mini-Redis 虽然只是一个雏形，但它已经包含了生产 Redis 最核心的架构要素。从它到真正的 Redis，还有很多可以扩展的方向：</p>
-
-        <table>
-            <thead>
-                <tr>
-                    <th>功能</th>
-                    <th>Mini-Redis 当前状态</th>
-                    <th>生产 Redis 的实现</th>
-                    <th>扩展思路</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>过期机制</td>
-                    <td>不支持</td>
-                    <td>惰性删除 + 定时扫描</td>
-                    <td>在 kv_get 时检查时间戳，同时启动一个定时器遍历部分 key</td>
-                </tr>
-                <tr>
-                    <td>持久化</td>
-                    <td>不支持（进程退出数据丢失）</td>
-                    <td>RDB 快照 + AOF 日志</td>
-                    <td>实现一个简单的 AOF 写入：每条 SET 命令写到一个 appendonly.aof 文件</td>
-                </tr>
-                <tr>
-                    <td>并发连接</td>
-                    <td>epoll 单线程支持</td>
-                    <td>epoll + IO 线程池（6.0+）</td>
-                    <td>将网络读取分离到线程池，主线程专注命令执行</td>
-                </tr>
-                <tr>
-                    <td>过期策略</td>
-                    <td>无</td>
-                    <td>8 种淘汰策略 + LRU/LFU 近似算法</td>
-                    <td>实现一个采样淘汰：每次 SET 时采样 5 个 key 淘汰最旧的</td>
-                </tr>
-                <tr>
-                    <td>数据类型</td>
-                    <td>仅 String + 简化 Hash</td>
-                    <td>String/Hash/List/Set/ZSet/Stream/Geo</td>
-                    <td>添加 ziplist 编码的 List：连续内存存储多个元素</td>
-                </tr>
-                <tr>
-                    <td>复制协议</td>
-                    <td>无</td>
-                    <td>PSYNC2 增量复制</td>
-                    <td>实现一个简单的 slave 同步：master 将写命令转发给所有 slave</td>
-                </tr>
-            </tbody>
-        </table>
-
-        <div class="highlight">
-            <strong>思考题：</strong>如果你从头开始设计一个 KV 存储，你会做哪些和 Redis 不同的选择？这里没有标准答案——vllm 团队选择用共享内存做缓存、MongoDB 选择 B-Tree 做存储引擎、RocksDB 选择 LSM-Tree。Redis 选择了"全内存 + 事件驱动 + 单线程"这条路，而被上百亿的访问量验证了其正确性。理解 Redis 为什么做这些选择，比知道 Redis 做了什么更重要。
-        </div>
-
-        <h2>课程总结：28 章知识体系回顾</h2>
-
-        <p>到现在，我们已经走完了完整的 Redis 源码之旅。让我们用一张表回顾这 28 章构建的知识体系：</p>
-
-        <table>
-            <thead>
-                <tr>
-                    <th>模块</th>
-                    <th>章节</th>
-                    <th>核心文件</th>
-                    <th>关键设计理念</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>环境搭建</td>
-                    <td>第1-2章</td>
-                    <td>Makefile, server.c main()</td>
-                    <td>可调试编译、GDB 单步、clangd 跳转</td>
-                </tr>
-                <tr>
-                    <td>内存管理</td>
-                    <td>第3章</td>
-                    <td>zmalloc.c, jemalloc</td>
-                    <td>分配失败即退出、内存统计、jemalloc 替换</td>
-                </tr>
-                <tr>
-                    <td>基础数据结构</td>
-                    <td>第4-7章</td>
-                    <td>sds.c, dict.c, ziplist.c, listpack.c, skiplist.c</td>
-                    <td>节省内存（压缩编码）、O(log N) 查找、渐进式 rehash</td>
-                </tr>
-                <tr>
-                    <td>对象系统</td>
-                    <td>第8章</td>
-                    <td>object.c, robj</td>
-                    <td>类型编码分离、编码升级/转换、引用计数共享</td>
-                </tr>
-                <tr>
-                    <td>命令实现</td>
-                    <td>第9-12章</td>
-                    <td>t_string.c, t_hash.c, t_list.c, t_set.c, t_zset.c</td>
-                    <td>命令表分发、类型检查、编码多态、阻塞操作</td>
-                </tr>
-                <tr>
-                    <td>事件循环与网络</td>
-                    <td>第13-16章</td>
-                    <td>ae.c, ae_epoll.c, anet.c, networking.c</td>
-                    <td>epoll 事件驱动、可读/可写/定时器、命令流水线</td>
-                </tr>
-                <tr>
-                    <td>持久化</td>
-                    <td>第17-18章</td>
-                    <td>rdb.c, aof.c</td>
-                    <td>写时复制 RDB、AOF 缓冲 fsync、混合持久化</td>
-                </tr>
-                <tr>
-                    <td>过期与淘汰</td>
-                    <td>第19章</td>
-                    <td>db.c, expire.c</td>
-                    <td>惰性删除 + 定时扫描、近似 LRU/LFU</td>
-                </tr>
-                <tr>
-                    <td>复制与高可用</td>
-                    <td>第20-22章</td>
-                    <td>replication.c, sentinel.c, cluster.c</td>
-                    <td>PSYNC2 增量复制、Raft 风格故障转移、gossip 协议</td>
-                </tr>
-                <tr>
-                    <td>诊断与运维</td>
-                    <td>第23-25章</td>
-                    <td>latency.c, debug.c, slowlog.c</td>
-                    <td>LATENCY DOCTOR、SLOWLOG、CRASH-REPORT</td>
-                </tr>
-                <tr>
-                    <td>脚本与扩展</td>
-                    <td>第26-27章</td>
-                    <td>script_lua.c, module.c</td>
-                    <td>Lua 5.1 嵌入、沙箱化执行、Module API 扩展</td>
-                </tr>
-                <tr>
-                    <td>未来与实战</td>
-                    <td>第28章</td>
-                    <td>Mini-Redis</td>
-                    <td>RESP 协议、事件循环、命令表引擎</td>
-                </tr>
-            </tbody>
-        </table>
-
-        <p>在课程的最后，我想分享一段 antirez 在 Redis 5.0 发布时写过的话：<em>"I think the best thing about Redis is not the code itself, but the design decisions behind it — and the fact that it stayed simple."</em>（我认为 Redis 最宝贵的不是代码本身，而是代码背后的设计决策——以及它始终保持简单这个事实。）</p>
-
-        <p><strong>读源码不是为了模仿，而是为了形成自己的工程判断力。</strong>当你面对一个新的系统设计时，能回想起 antirez 在 <code>dict.c</code> 中为什么选择渐进式 rehash 而不是全局停顿，在 <code>ae.c</code> 中为什么用单线程而不是多线程，在 <code>rdb.c</code> 中为什么用 fork + COW 而不是原地序列化——这些判断力会沉淀为你自己的工程直觉。这，才是我们花了 28 章通读 Redis 源码的真正收获。</p>
-
-        <p>感谢大家一路坚持到这里。江湖路远，代码相伴，后会有期。</p>
-
-        <div class="footer-nav">
-            <a href="27.html">← 上一章</a>
-            <a href="index.html">📖 返回目录</a>
-            <a href="javascript:void(0)">下一章 →</a>
-        </div>
-    </div>
-</div>
-</div>
-</body>
-</html>
+<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Redis 8 方向与许可边界的定性梳理，以及用 Python 标准库从零实现 Mini-Redis：selectors 事件循环、RESP 数组解析、命令表与 KV 存储，并回顾 28 章知识体系。">
+<title>第 28 章｜Redis 8 方向与手写 Mini-Redis · Redis 源码解析</title>
+<style>*,*::before,*::after{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,"PingFang SC",sans-serif;line-height:1.78;color:#1d3438;background:#fdfcf8;overflow-wrap:anywhere}svg,img{max-width:100%;height:auto}pre{overflow-x:auto;max-width:100%;white-space:pre-wrap;word-break:break-word}.table-scroll{overflow-x:auto;max-width:100%}table{border-collapse:collapse;width:100%}</style>
+<link rel="stylesheet" href="../assets/css/site.css"></head><body>
+<a class="skip-link" href="#main">跳至正文</a>
+<header class="site-head"><div class="site-head-inner"><a class="brand" href="../index.html"><span class="brand-mark">R</span>Redis / 源码图谱</a><nav class="site-links" aria-label="主要导航"><a href="../index.html#chapters">全部章节</a><a href="#sources">参考源码</a><a href="https://github.com/1998x-stack/redis-source-analysis-tutorial">GitHub</a></nav></div></header>
+<div class="article-layout">
+<aside class="article-aside" aria-label="本章目录"><a href="../index.html">← 返回首页</a><details open><summary>本章阅读路径</summary><nav class="toc-links" aria-label="正文目录">
+<a href="#problem">先说清楚问题：自己写一遍才能真懂</a>
+<a href="#redis8">Redis 8：方向与许可边界</a>
+<a href="#design">Mini-Redis：能跑起来的最小骨架</a>
+<a href="#eventloop">Step 1：selectors 事件循环</a>
+<a href="#resp">Step 2：RESP 数组解析</a>
+<a href="#commands">Step 3：命令表与 KV 存储</a>
+<a href="#extend">Step 4：往哪里继续扩展</a>
+<a href="#review">28 章知识体系回顾</a>
+<a href="#experiment">对照实验：跑一个 Mini-Redis</a>
+<a href="#limits">简化清单与边界</a>
+<a href="#sources">参考</a>
+</nav></details></aside>
+<main class="article-main" id="main"><article>
+<header class="article-header"><p class="eyebrow">Chapter 28 / Redis Source Anatomy</p><h1>Redis 8 方向与手写 Mini-Redis</h1><p class="lede">作为收尾，本章做两件事：一是把 Redis 7.2 与后续版本（7.4、8.x）的方向和许可边界讲清楚，避免版本混淆；二是用 Python 标准库从零写一个能跑的 Mini-Redis，把事件循环、RESP 解析、命令表与 KV 存储串成一条可执行的因果链。</p><p class="reading-meta">技术在演进，原理相对稳定 · 问题 → 图解 → 代码 → 实验 → 边界</p></header>
+<section id="problem" aria-labelledby="h-problem"><h2 id="h-problem">先说清楚问题：自己写一遍才能真懂</h2>
+<p>读源码时，“事件循环”“协议解析”“命令分派”很容易变成几个被反复提到的名词。真实的理解往往发生在你亲手把它们串起来、并且看到它跑起来的时候。本章后半部分用 Python 标准库实现一个极简服务器，只保留这四个环节的最小形态。</p>
+<p>它当然不是 Redis：单线程、无持久化、无过期、命令表极小。但正因为它小，每一条请求都能被完整追踪——这正是前面 27 章反复使用的“最小可运行模型”方法。</p>
+</section>
+<section id="redis8" aria-labelledby="h-redis8"><h2 id="h-redis8">Redis 8：方向与许可边界</h2>
+<p>本课程前十五章把源码锚定在 <strong>Redis 7.2.4</strong>，后面的持久化与高可用也以 7.2 为准。但上游一直在演进，几个必须分清的时间点：<strong>Redis 7.4</strong> 起改用 RSALv2/SSPLv1 源可用许可，并引入了 Hash 字段级过期等能力；<strong>Redis 8.x</strong> 进一步把此前以独立模块发行的搜索、JSON、时序、概率数据结构等能力整合进统一发行版，并加入向量集（vector set）这类新结构，同时在许可上增加了 AGPLv3 选项。</p>
+<p>因此：本章不对 8.x 的具体命令集、默认值或性能指标下断言。任何具体数字、字段名与行为都应以对应版本的官方发布说明与源码为准，不要把 7.2.4 的结论直接搬到 8.x。这也是为什么全站引用都固定到具体 tag，而不是“最新分支”。</p>
+<figure class="figure"><svg role="img" aria-labelledby="fig28-1-t" aria-describedby="fig28-1-d" viewBox="0 0 720 190" xmlns="http://www.w3.org/2000/svg"><title id="fig28-1-t">版本、能力与许可的演进线索</title><desc id="fig28-1-d">从 Redis 7.2 到 7.4 再到 8.x：许可从 BSD 变为源可用多许可；能力从核心命令扩展到整合搜索/JSON/时序等模块与向量集。每条连线都需按具体版本核对，不得跨版本套用。</desc><rect width="720" height="190" rx="16" fill="#f6fbf9"/><g font-family="system-ui,sans-serif" font-size="12" text-anchor="middle"><rect x="30" y="60" width="180" height="70" rx="10" fill="#e1f4f0" stroke="#167e80"/><text x="120" y="86" fill="#1d3438">Redis 7.2.4</text><text x="120" y="106" font-size="11" fill="#52666b">本课程源码基准</text><text x="120" y="122" font-size="11" fill="#52666b">BSD</text><rect x="270" y="60" width="180" height="70" rx="10" fill="#efecf9" stroke="#6654a7"/><text x="360" y="86" fill="#1d3438">Redis 7.4</text><text x="360" y="106" font-size="11" fill="#52666b">源可用许可</text><text x="360" y="122" font-size="11" fill="#52666b">字段级过期等</text><rect x="510" y="60" width="180" height="70" rx="10" fill="#fcf0e9" stroke="#c9664a"/><text x="600" y="86" fill="#1d3438">Redis 8.x</text><text x="600" y="106" font-size="11" fill="#52666b">能力整合 + 向量集</text><text x="600" y="122" font-size="11" fill="#52666b">多许可含 AGPLv3</text><g stroke="#167e80" stroke-width="2" fill="none"><path d="M210 95 H270"/><path d="M450 95 H510"/></g><text x="360" y="165" fill="#a5462c">具体行为与数字以各版本官方发布说明为准，不跨版本套用</text></g></svg><figcaption>图 1 · 一条粗略的演进线索。这里只标定性方向与许可变化；具体命令、默认值与指标必须逐版本核对。</figcaption></figure>
+</section>
+<section id="design" aria-labelledby="h-design"><h2 id="h-design">Mini-Redis：能跑起来的最小骨架</h2>
+<p>设计目标只有三条：一个文件、只用 Python 标准库、打开连接就能用 <code>redis-cli</code> 对话。为了保持可读，它只接受 RESP 数组形式的请求（即客户端发送的正常命令），支持 <code>PING</code>、<code>SET</code>、<code>GET</code>、<code>DEL</code> 四类命令，数据存在一个普通字典里，不做持久化与过期。</p>
+<figure class="figure"><svg role="img" aria-labelledby="fig28-2-t" aria-describedby="fig28-2-d" viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg"><title id="fig28-2-t">Mini-Redis 的四个环节</title><desc id="fig28-2-d">selectors 事件循环接收字节到缓冲区；RESP 解析器把缓冲区变成参数数组；命令表按名字找到处理函数；KV 字典完成读写后返回 RESP 回复。</desc><rect width="720" height="200" rx="16" fill="#f6fbf9"/><g font-family="system-ui,sans-serif" font-size="12" text-anchor="middle"><rect x="24" y="40" width="150" height="60" rx="10" fill="#e1f4f0" stroke="#167e80"/><text x="99" y="66" fill="#1d3438">事件循环</text><text x="99" y="85" font-size="11" fill="#52666b">selectors + socket</text><rect x="190" y="40" width="150" height="60" rx="10" fill="#efecf9" stroke="#6654a7"/><text x="265" y="66" fill="#1d3438">RESP 解析</text><text x="265" y="85" font-size="11" fill="#52666b">缓冲区 → 参数数组</text><rect x="356" y="40" width="150" height="60" rx="10" fill="#fcf0e9" stroke="#c9664a"/><text x="431" y="66" fill="#1d3438">命令表</text><text x="431" y="85" font-size="11" fill="#52666b">名字 → 处理函数</text><rect x="522" y="40" width="174" height="60" rx="10" fill="#fff" stroke="#167e80"/><text x="609" y="66" fill="#1d3438">KV 字典</text><text x="609" y="85" font-size="11" fill="#52666b">读写 + 回复</text><g stroke="#167e80" stroke-width="2" fill="none"><path d="M174 70 H190"/><path d="M340 70 H356"/><path d="M506 70 H522"/></g><text x="360" y="150" fill="#52666b">一条请求从左到右走完四个环节；回复再沿原路写回套接字</text></g></svg><figcaption>图 2 · Mini-Redis 的四个环节，对应 Redis 里的 ae 事件循环、协议解析、命令表与数据库字典，只是规模小得多。</figcaption></figure>
+</section>
+<section id="eventloop" aria-labelledby="h-eventloop"><h2 id="h-eventloop">Step 1：selectors 事件循环</h2>
+<p>事件循环负责“有字节可读时把字节收进缓冲区”。这里用标准库 <code>selectors</code> 做 I/O 多路复用，服务端套接字负责接受连接，每个客户端连接对应一个字节缓冲区。这与 Redis 的 ae 不同（ae 还有时间事件、支持 epoll/kqueue 等多后端），但“读事件→回调”的骨架是一致的。</p>
+<pre><code># mini_redis.py — 教学用最小 RESP 服务器（单线程，仅 PING/SET/GET/DEL）
+import selectors, socket
+
+def serve(host="127.0.0.1", port=6380):
+    db = MiniRedis()
+    sel = selectors.DefaultSelector()
+    srv = socket.socket()
+    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    srv.bind((host, port)); srv.listen(); srv.setblocking(False)
+    sel.register(srv, selectors.EVENT_READ, data=None)
+    while True:
+        for key, _ in sel.select():
+            if key.data is None:                       # 新连接
+                conn, _ = srv.accept(); conn.setblocking(False)
+                sel.register(conn, selectors.EVENT_READ, data=bytearray())
+                continue
+            conn, buf = key.fileobj, key.data          # 已连接客户端
+            chunk = conn.recv(4096)
+            if not chunk:
+                sel.unregister(conn); conn.close(); continue
+            buf += chunk
+            while True:
+                parsed = parse_command(bytes(buf))
+                if parsed is None: break               # 命令不完整，等更多字节
+                args, consumed = parsed
+                del buf[:consumed]
+                conn.sendall(db.execute(args))</code></pre>
+<p>注意内层的 <code>while True</code>：一次 <code>recv</code> 可能只拿到半条命令，也可能一次拿到多条（pipeline）。因此缓冲区要一直解析到“不完整”为止，而不是每次读就当作一条完整命令。这正是第一章强调过的“TCP 是字节流”。</p>
+</section>
+<section id="resp" aria-labelledby="h-resp"><h2 id="h-resp">Step 2：RESP 数组解析</h2>
+<p>解析器的职责是从缓冲区内取出“一条完整命令”。客户端发的普通命令是 RESP 数组（<code>*N\r\n</code>），每个元素是批量字符串（<code>$len\r\n payload\r\n</code>）。解析失败的原因只有两种：要么格式不对（返回错误），要么字节还不够（返回 <code>None</code>，表示继续等）。下面只处理这两种情况。</p>
+<pre><code>def parse_command(buf):
+    """从缓冲区解析一条数组形式的命令；不完整返回 None。
+    成功返回 (参数列表, 消耗字节数)。"""
+    if not buf.startswith(b"*"):
+        return None
+    try:
+        line_end = buf.index(b"\r\n")
+    except ValueError:
+        return None                       # 还没读到行尾
+    count = int(buf[1:line_end])
+    pos = line_end + 2
+    args = []
+    for _ in range(count):
+        if buf[pos:pos + 1] != b"$":
+            return None                   # 只处理 $ 批量字符串
+        try:
+            eol = buf.index(b"\r\n", pos)
+        except ValueError:
+            return None
+        length = int(buf[pos + 1:eol])
+        start = eol + 2
+        end = start + length
+        if len(buf) &lt; end + 2:
+            return None                   # 内容或结尾 CRLF 还没到齐
+        args.append(buf[start:end])
+        pos = end + 2
+    return args, pos</code></pre>
+<p>真实 Redis 的 <code>processInputBuffer()</code> 要复杂得多：它支持内联命令、多种 RESP 类型、可中断的多步解析状态机、协议错误时的连接关闭等。这里刻意只保留“数组 + 批量字符串”这一条路径，以便看清“固定边界后才能执行”这一核心。</p>
+</section>
+<section id="commands" aria-labelledby="h-commands"><h2 id="h-commands">Step 3：命令表与 KV 存储</h2>
+<p>最后一块是“按名字找处理函数”和“读写数据”。命令表是一个字典，处理函数的返回值就是已经编码好的 RESP 字节。这与 Redis 把命令名映射到 <code>redisCommand</code>、再用 <code>call()</code> 分派是同一个思路，只是把权限、事务、传播等环节全省了。</p>
+<pre><code>class MiniRedis:
+    def __init__(self):
+        self.store = {}
+        self.handlers = {"PING": self.cmd_ping, "SET": self.cmd_set,
+                         "GET": self.cmd_get, "DEL": self.cmd_del}
+
+    def execute(self, args):
+        if not args:
+            return b"-ERR empty command\r\n"
+        name = args[0].decode("utf-8", "replace").upper()
+        handler = self.handlers.get(name)
+        if handler is None:
+            return b"-ERR unknown command '%s'\r\n" % name.encode()
+        return handler(args[1:])
+
+    def cmd_ping(self, args):
+        return b"+PONG\r\n"
+
+    def cmd_set(self, args):
+        if len(args) != 2:
+            return b"-ERR wrong number of arguments\r\n"
+        self.store[args[0]] = args[1]
+        return b"+OK\r\n"
+
+    def cmd_get(self, args):
+        value = self.store.get(args[0])
+        if value is None:
+            return b"$-1\r\n"                 # RESP2 空回复
+        return b"$%d\r\n%s\r\n" % (len(value), value)
+
+    def cmd_del(self, args):
+        n = sum(1 for k in args if self.store.pop(k, None) is not None)
+        return b":%d\r\n" % n
+
+if __name__ == "__main__":
+    serve()</code></pre>
+<p>把三段拼进同一个 <code>mini_redis.py</code>，就可以用现成的 <code>redis-cli</code> 与它对话——因为双方说的是同一套 RESP。这就是协议层“可替换实现”的意义：客户端不需要知道你背后是不是真的 Redis。</p>
+</section>
+<section id="extend" aria-labelledby="h-extend"><h2 id="h-extend">Step 4：往哪里继续扩展</h2>
+<p>跑通之后，最有价值的练习是“把一个省略掉的机制加回去”，每加一项，都会逼你去理解 Redis 为什么那样设计：</p>
+<ul><li><strong>支持 pipeline</strong>：已经基本具备（循环解析），但要验证一次回复多条时的顺序与缓冲。</li><li><strong>加直接行命令</strong>：实现 RESP 的 inline 命令，体会真实 <code>processInputBuffer</code> 为何需要多步状态机。</li><li><strong>加 TTL</strong>：为每个值存过期时间，并在事件循环里做惰性淘汰——对应第 19 章。</li><li><strong>加 RDB 落盘</strong>：定期把字典序列化到文件，重启时加载——对应第 17 章。</li><li><strong>加更多类型</strong>：至少实现 List 的 <code>RPUSH</code>/<code>LPOP</code>，体会命令表与数据结构的分离。</li><li><strong>线程化 I/O</strong>：把读写放到工作线程，体会第 15 章的 fan-out/fan-in 为何要保持命令执行在主线。</li></ul>
+<p>每加一项，都应回到本课程对应的章节对比真实实现，而不是只看“能不能跑”。</p>
+</section>
+<section id="review" aria-labelledby="h-review"><h2 id="h-review">28 章知识体系回顾</h2>
+<p>把 28 章按职责分五层，可以把散落的知识点串成一张图：底层内存与数据结构支撑命令实现，命令实现之上是事件循环与命令处理，再往上是持久化与复制/高可用，最外层是运维、诊断与扩展。读源码时沿这条纵向依赖往下追，就不会迷路。</p>
+<figure class="figure"><svg role="img" aria-labelledby="fig28-3-t" aria-describedby="fig28-3-d" viewBox="0 0 720 250" xmlns="http://www.w3.org/2000/svg"><title id="fig28-3-t">28 章知识体系的五层依赖</title><desc id="fig28-3-d">最底层是 zmalloc/SDS/dict 等内存与数据结构，其上是各数据类型命令实现，再上是事件循环与命令处理，然后持久化与复制高可用，最外层是运维诊断与模块扩展。</desc><rect width="720" height="250" rx="16" fill="#f6fbf9"/><g font-family="system-ui,sans-serif" font-size="12" text-anchor="middle"><rect x="40" y="24" width="640" height="36" rx="8" fill="#fcf0e9" stroke="#c9664a"/><text x="360" y="47" fill="#1d3438">运维诊断与扩展：可观测性 / 故障定位 / Lua / Module / Redis 8 方向</text><rect x="40" y="70" width="640" height="36" rx="8" fill="#efecf9" stroke="#6654a7"/><text x="360" y="93" fill="#1d3438">持久化与高可用：RDB / AOF / 复制 / 过期淘汰 / Sentinel 与 Cluster</text><rect x="40" y="116" width="640" height="36" rx="8" fill="#e1f4f0" stroke="#167e80"/><text x="360" y="139" fill="#1d3438">调度层：事件循环 / 命令处理 / I/O 线程 / 阻塞命令</text><rect x="40" y="162" width="640" height="36" rx="8" fill="#e1f4f0" stroke="#167e80"/><text x="360" y="185" fill="#1d3438">命令实现：String / List / Set / ZSet / Hash / Stream / GEO / HLL</text><rect x="40" y="208" width="640" height="30" rx="8" fill="#fff" stroke="#52666b"/><text x="360" y="228" fill="#203035">基础：zmalloc / SDS / dict / listpack / skiplist / intset / redisObject</text></g></svg><figcaption>图 3 · 五层依赖图。上层依赖下层：不理解 dict 就很难理解命令实现，不理解命令处理就很难理解持久化为何这样挂钩。</figcaption></figure>
+</section>
+<section id="experiment" aria-labelledby="h-experiment"><h2 id="h-experiment">对照实验：跑一个 Mini-Redis</h2>
+<p>把前面三段拼成 <code>mini_redis.py</code>，用一个终端启动它，另一个终端用现成的 <code>redis-cli</code> 对话。因为双方用同一套 RESP，客户端不需要任何修改。</p>
+<pre><code>python3 mini_redis.py &amp;
+# 另一个终端：
+redis-cli -p 6380 PING            # 预期：PONG
+redis-cli -p 6380 SET hello world # 预期：OK
+redis-cli -p 6380 GET hello       # 预期："world"
+redis-cli -p 6380 DEL hello       # 预期：1
+redis-cli -p 6380 GET hello       # 预期：(nil)
+redis-cli -p 6380 BOGUS           # 预期：unknown command 错误
+# 结束：
+kill %1</code></pre>
+<p>预期观察：<code>PING</code> 回 <code>+PONG</code>，<code>SET</code> 回 <code>+OK</code>，<code>GET</code> 回批量字符串，删除后 <code>GET</code> 回 <code>$-1</code>（客户端显示为 <code>(nil)</code>），未实现的命令返回错误。也可以用两个 <code>redis-cli</code> 同时连不同键，观察单线程下它们依次被处理。</p>
+<div class="note">Mini-Redis 仅用于理解机制，无认证、无持久化、无过期，只应绑在本地回环地址上练习。</div>
+<div class="simulator" data-mini-demo><label for="sim-mini">选择一种命令，看 Mini-Redis 走到哪一步</label><select id="sim-mini"><option value="ping">PING</option><option value="set">SET</option><option value="get">GET</option><option value="bad">未知命令</option></select><div data-output class="sim-output" role="status" aria-live="polite"></div><p class="muted" style="font-size:.79rem;margin-bottom:0">交互只用于回顾“解析 → 查表 → 读写 → 回复”的路径。</p></div>
+</section>
+<section id="limits" aria-labelledby="h-limits"><h2 id="h-limits">简化清单与边界</h2>
+<ul><li><strong>单线程且无时间事件</strong>：Mini-Redis 没有 serverCron、没有定时任务与主动过期。</li><li><strong>只支持一种请求形式</strong>：仅 RESP 数组 + 批量字符串，不支持 inline 命令、多种 RESP 类型与协议错误处理。</li><li><strong>无持久化与复制</strong>：数据只在内存字典里，也无 AOF/RDB/主从。</li><li><strong>无认证与稳定保障</strong>：没有 ACL/密码，不能直接暴露到网络。</li><li><strong>不是 Redis 替代品</strong>：它只是把事件循环、协议解析、命令表与 KV 存储的因果关系显式化。</li><li><strong>Redis 8 边界</strong>：本章对 8.x 只给定性方向，具体命令、默认值与指标必须以对应版本官方发布说明为准。</li></ul>
+<p>回收整条课程主线：从一条命令穿过网络与命令表开始，到内存与数据结构，再到持久化、复制、高可用，最后是运维与扩展。选一个你最感兴趣的环节，回到固定 tag 的源码里读一遗——那才是真正属于你的那部分。</p>
+</section>
+<section class="sources" id="sources" aria-labelledby="h-sources"><h2 id="h-sources">参考</h2><p>Redis 实现引用固定到 <code>redis/redis@7.2.4</code>；版本与许可信息以官方页面为准。</p><ol><li><a href="https://github.com/redis/redis/blob/7.2.4/src/server.c">server.c：aeMain/processCommand 与命令处理主线（对照 Mini-Redis）</a></li><li><a href="https://github.com/redis/redis/blob/7.2.4/src/networking.c">networking.c：processInputBuffer 与协议解析（对照 Step 2）</a></li><li><a href="https://github.com/redis/redis/blob/7.2.4/src/ae.c">ae.c：事件循环抽象（对照 Step 1）</a></li><li><a href="https://redis.io/docs/latest/develop/reference/protocol-spec/">Redis 官方 RESP 协议说明</a></li><li><a href="https://redis.io/legal/licenses/">Redis 官方版本与许可边界</a></li></ol></section>
+<nav class="pager" aria-label="前后章节"><a href="27.html">← 第 27 章</a><a href="../index.html">返回课程首页</a></nav>
+</article></main></div>
+<footer class="footer"><div class="max"><a href="../index.html">返回课程主页</a></div></footer>
+<script src="../assets/js/third-article.js" defer></script>
+<script>(()=>{"use strict";const map={ping:"解析出 [PING]，查表命中 cmd_ping，不读写字典，直接回 +PONG。",set:"解析出 [SET, key, value]，查表命中 cmd_set，写入字典后回 +OK。",get:"解析出 [GET, key]，查表命中 cmd_get，命中回批量字符串，未命中回 $-1。",bad:"解析成功但命令名不在命令表里，execute 回 -ERR unknown command，不进入任何处理函数。"};const box=document.querySelector("[data-mini-demo]");if(box){const s=box.querySelector("select"),o=box.querySelector("[data-output]");const up=()=>{o.textContent=map[s.value]||"";};s.addEventListener("change",up);up();}})();</script>
+</body></html>
