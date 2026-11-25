@@ -28,5 +28,5 @@
     "主动过期在 src/expire.c（activeExpireCycle），不是 server.c；每轮抽样常量名为 ACTIVE_EXPIRE_CYCLE_KEYS_PER_LOOP（值 20）。"
   ],
   "methods": "Source struct fields, signatures and constants inspected in pinned upstream GitHub (redis/redis@7.2.4); diagrams newly authored inline as SVG.",
-  "runtime_test": "not executed; static validate.py pass and Chromium browser_check.py pass (see qa/ report)"
+  "runtime_test": "static validate.py pass; chromium browser_check.py executed for chapter 19 — desktop 1440 / tablet 768 / mobile 390 / narrow 360 all pass (no JS errors, no horizontal overflow, no external requests). Reports in the run log qa/ch19/ (not committed to the repo)."
 }

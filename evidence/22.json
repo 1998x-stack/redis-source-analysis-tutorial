@@ -35,5 +35,5 @@
     "槽区间 0-5460 / 5461-10922 / 10923-16383 在图 2 中仅作示意；实际划分由 CLUSTER SHARDS/SLOTS 输出决定。"
   ],
   "methods": "Source constants, signatures and message types inspected in pinned upstream GitHub (redis/redis@7.2.4); diagrams newly authored inline as SVG.",
-  "runtime_test": "not executed; static validate.py pass and Chromium browser_check.py pass (see qa/ report)"
+  "runtime_test": "static validate.py pass; chromium browser_check.py executed for chapter 22 — desktop 1440 / tablet 768 / mobile 390 / narrow 360 all pass (no JS errors, no horizontal overflow, no external requests). Reports in the run log qa/ch22/ (not committed to the repo)."
 }

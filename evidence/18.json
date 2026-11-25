@@ -31,5 +31,5 @@
     "appendfsync 各策略的相对开销仅作定性描述，未给出固定百分比，以避免无来源指标。"
   ],
   "methods": "Source signatures, constants and manifest keys inspected in pinned upstream GitHub (redis/redis@7.2.4); diagrams newly authored inline as SVG.",
-  "runtime_test": "not executed; static validate.py pass and Chromium browser_check.py pass (see qa/ report)"
+  "runtime_test": "static validate.py pass; chromium browser_check.py executed for chapter 18 — desktop 1440 / tablet 768 / mobile 390 / narrow 360 all pass (no JS errors, no horizontal overflow, no external requests). Reports in the run log qa/ch18/ (not committed to the repo)."
 }
