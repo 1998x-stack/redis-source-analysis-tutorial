@@ -1,336 +1,94 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.5, user-scalable=yes">
-    <title>第26章 Lua脚本与事务</title>
-    <link rel="stylesheet" href="theme.css">
-</head>
-<body>
-<div class="double-border">
-<div class="container">
-    <div class="sidebar">
-        <h3>🔧 课程目录</h3>
-        <ul class="chapter-list">
-            <li><a href="01.html">第1章 Redis源码全景图</a></li>
-            <li><a href="02.html">第2章 编译与调试环境搭建</a></li>
-            <li><a href="03.html">第3章 内存管理：zmalloc与jemalloc</a></li>
-            <li><a href="04.html">第4章 SDS动态字符串</a></li>
-            <li><a href="05.html">第5章 链表、压缩列表与listpack</a></li>
-            <li><a href="06.html">第6章 字典与渐进式rehash</a></li>
-            <li><a href="07.html">第7章 跳表与整数集合</a></li>
-            <li><a href="08.html">第8章 redisObject与编码转换</a></li>
-            <li><a href="09.html">第9章 String与Hash命令实现</a></li>
-            <li><a href="10.html">第10章 List命令与阻塞操作</a></li>
-            <li><a href="11.html">第11章 Set与Sorted Set命令实现</a></li>
-            <li><a href="12.html">第12章 Stream、Geo与HyperLogLog</a></li>
-            <li><a href="13.html">第13章 事件循环（上）：文件事件</a></li>
-            <li><a href="14.html">第14章 事件循环（下）：时间事件</a></li>
-            <li><a href="15.html">第15章 网络IO架构</a></li>
-            <li><a href="16.html">第16章 命令处理全流程</a></li>
-            <li><a href="17.html">第17章 RDB持久化</a></li>
-            <li><a href="18.html">第18章 AOF与混合持久化</a></li>
-            <li><a href="19.html">第19章 键过期与内存淘汰</a></li>
-            <li><a href="20.html">第20章 主从复制（上）</a></li>
-            <li><a href="21.html">第21章 主从复制（下）</a></li>
-            <li><a href="22.html">第22章 Sentinel哨兵与Cluster集群</a></li>
-            <li><a href="23.html">第23章 性能诊断工具链</a></li>
-            <li><a href="24.html">第24章 生产环境踩坑指南</a></li>
-            <li><a href="25.html">第25章 源码级问题定位实战</a></li>
-            <li><a href="26.html" class="active">第26章 Lua脚本与事务</a></li>
-            <li><a href="27.html">第27章 Module开发实战</a></li>
-            <li><a href="28.html">第28章 Redis 8.x前瞻与手写Mini-Redis</a></li>
-        </ul>
-    </div>
-    <div class="main-content">
+<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="按 Redis 7.2.4 固定源码解释 Lua 脚本与事务：EVAL/EVALSHA 的脚本缓存与 script_lua.c 执行、lua-time-limit 与 BUSY/SCRIPT KILL、MULTI/EXEC 排队、WATCH 乐观锁与 CLIENT_DIRTY_CAS。">
+<title>第 26 章｜Lua 脚本与事务：原子执行的边界 · Redis 源码解析</title>
+<style>*,*::before,*::after{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,"PingFang SC",sans-serif;line-height:1.78;color:#1d3438;background:#fdfcf8;overflow-wrap:anywhere}svg,img{max-width:100%;height:auto}pre{overflow-x:auto;max-width:100%;white-space:pre-wrap;word-break:break-word}.table-scroll{overflow-x:auto;max-width:100%}table{border-collapse:collapse;width:100%}</style>
+<link rel="stylesheet" href="../assets/css/site.css"></head><body>
+<a class="skip-link" href="#main">跳至正文</a>
+<header class="site-head"><div class="site-head-inner"><a class="brand" href="../index.html"><span class="brand-mark">R</span>Redis / 源码图谱</a><nav class="site-links" aria-label="主要导航"><a href="../index.html#chapters">全部章节</a><a href="#sources">参考源码</a><a href="https://github.com/1998x-stack/redis-source-analysis-tutorial">GitHub</a></nav></div></header>
+<div class="article-layout">
+<aside class="article-aside" aria-label="本章目录"><a href="../index.html">← 返回首页</a><details open><summary>本章阅读路径</summary><nav class="toc-links" aria-label="正文目录">
+<a href="#problem">先说清楚问题：单线程里怎么算“原子”</a>
+<a href="#eval">EVAL / EVALSHA：脚本缓存与执行</a>
+<a href="#script-run">脚本运行期：lua-time-limit 与 BUSY</a>
+<a href="#multi">MULTI / EXEC：排队而不是立即执行</a>
+<a href="#watch">WATCH：乐观锁与 CLIENT_DIRTY_CAS</a>
+<a href="#atomic">脚本与事务分别保证什么</a>
+<a href="#experiment">对照实验：观察排队与中断</a>
+<a href="#limits">把“原子”与 ACID 分开</a>
+<a href="#sources">固定版本参考</a>
+</nav></details></aside>
+<main class="article-main" id="main"><article>
+<header class="article-header"><p class="eyebrow">Chapter 26 / Redis 7.2.4 Source Anatomy</p><h1>Lua 脚本与事务：原子执行的边界</h1><p class="lede">Redis 是单线程执行命令的，但“不会被打断”和“出错能回滚”是两件事。本章按 Redis 7.2.4 固定源码，解释 <code>EVAL</code>/<code>EVALSHA</code> 如何把脚本送进引擎、<code>MULTI</code>/<code>EXEC</code> 如何先排队再执行，以及 <code>WATCH</code> 靠什么发现并发修改。</p><p class="reading-meta">固定源代码 Redis 7.2.4 · 问题 → 图解 → 源码 → 实验 → 边界</p></header>
+<section id="problem" aria-labelledby="h-problem"><h2 id="h-problem">先说清楚问题：单线程里怎么算“原子”</h2>
+<p>Redis 主命令执行路径是单线程的，所以“一条命令不会与另一条命令交错”是天然成立的。但一条命令只做一件事，很多业务需要“先读后写、再决定”的组合，这就引出了两个不同的工具：<strong>脚本</strong>（把多步操作交给 Lua 引擎）和<strong>事务</strong>（把多条命令排队后一起执行）。它们都追求“中间不被打断”，但实现方式和边界完全不同。</p>
+<p>本章围绕两个问题展开：脚本执行期间其他客户端会看到什么、事务里的命令何时才真正执行。把这两个时间线画清楚，“为什么脚本会阻塞整个实例”“为什么事务没有回滚”就不再是玄学。</p>
+</section>
+<section id="eval" aria-labelledby="h-eval"><h2 id="h-eval">EVAL / EVALSHA：脚本缓存与执行</h2>
+<p>脚本命令的实现分两层：<code>script.c</code> 是命令层（<code>EVAL</code>、<code>EVALSHA</code>、<code>SCRIPT</code> 子命令），<code>script_lua.c</code>（即 Lua 引擎绑定）负责把脚本交给 Lua 解释器、把 <code>redis.call</code> 桥接回命令执行。当执行 <code>EVAL body numkeys ...</code> 时，服务端会先计算脚本体的 SHA1，把“SHA1 → 脚本”存入 <code>server.lua_scripts</code> 字典，再编译执行。</p>
+<p><code>EVALSHA sha1 ...</code> 不再传输脚本体，而是按 SHA1 从缓存里取。这带来两个实用命令：<code>SCRIPT LOAD body</code> 只加载不执行并返回 SHA1，<code>SCRIPT EXISTS sha1 ...</code> 检查缓存是否命中。若 <code>EVALSHA</code> 未命中，会返回 <code>NOSCRIPT</code> 错误，客户端应回退到 <code>EVAL</code>。关键点：缓存以 SHA1 为键，脚本一改，SHA1 就变，旧缓存不一定命中；<code>SCRIPT FLUSH</code> 会清空缓存。</p>
+<div class="note">Redis 7 另有一套脚本能力叫 Functions（<code>FUNCTION LOAD</code>，实现在 <code>functions.c</code>/<code>function_lua.c</code>），它把脚本注册为命名函数并持久化。它与 <code>EVAL</code> 不是同一机制，本章只讨论后者。</div>
+</section>
+<section id="script-run" aria-labelledby="h-script-run"><h2 id="h-script-run">脚本运行期：lua-time-limit 与 BUSY</h2>
+<p>脚本在单线程里执行：从开始到返回，服务器不会去处理其他客户端的普通命令（这就是“原子”的来源）。但这也意味着<strong>一个慢脚本会阻塞整个实例</strong>。为防止无限阻塞，Redis 设置了 <code>lua-time-limit</code>（默认 <code>5000</code> 毫秒）：超过这个“软限制”后，服务器不会直接杀死脚本，而是开始对其他客户端回复 <code>-BUSY</code>，并只接受少数管理命令。</p>
+<p>关键在于“软限制”二字。脚本已经在执行中，Lua 无法安全地强制中止，所以此时你可以用另一个连接发 <code>SCRIPT KILL</code>——它只有在脚本尚未产生写效果时才成功；若脚本已经写过数据，则只能 <code>SHUTDOWN NOSAVE</code>。因此脚本应该短小、确定，避免长循环与不可预算的遍历。</p>
+<figure class="figure"><svg role="img" aria-labelledby="fig26-1-t" aria-describedby="fig26-1-d" viewBox="0 0 720 210" xmlns="http://www.w3.org/2000/svg"><title id="fig26-1-t">脚本执行时间线上的 BUSY 与 SCRIPT KILL</title><desc id="fig26-1-d">脚本开始执行后，其他客户端命令被推迟；超过 lua-time-limit 后它们收到 BUSY 错误，可以发出 SCRIPT KILL；若脚本已产生写效果则只能用 SHUTDOWN NOSAVE。</desc><rect width="720" height="210" rx="16" fill="#f6fbf9"/><g font-family="system-ui,sans-serif" font-size="12"><line x1="40" y1="150" x2="680" y2="150" stroke="#52666b" stroke-width="2"/><rect x="60" y="96" width="180" height="44" rx="8" fill="#e1f4f0" stroke="#167e80"/><text x="150" y="123" text-anchor="middle" fill="#1d3438">脚本执行中</text><rect x="240" y="96" width="200" height="44" rx="8" fill="#fcf0e9" stroke="#c9664a"/><text x="340" y="117" text-anchor="middle" fill="#1d3438">超过 lua-time-limit</text><text x="340" y="133" text-anchor="middle" font-size="11" fill="#52666b">其他客户端收到 -BUSY</text><rect x="440" y="96" width="220" height="44" rx="8" fill="#efecf9" stroke="#6654a7"/><text x="550" y="117" text-anchor="middle" fill="#1d3438">SCRIPT KILL / SHUTDOWN</text><text x="550" y="133" text-anchor="middle" font-size="11" fill="#52666b">KILL 仅限未写数据时</text><text x="150" y="170" text-anchor="middle" font-size="11" fill="#52666b">单线程：不处理其他命令</text><text x="340" y="170" text-anchor="middle" font-size="11" fill="#52666b">软限制，不直接终止</text><text x="550" y="170" text-anchor="middle" font-size="11" fill="#52666b">已写则只能丢弃重启</text></g></svg><figcaption>图 1 · 脚本运行期的时间线。原子性来自单线程不切换，代价是慢脚本会把整个实例拖住；<code>lua-time-limit</code> 只是“开始拒绝其他请求”的阀值，不是强制超时。</figcaption></figure>
+<p>还有一个容易被忽略的边界：脚本内部调用的 <code>redis.call</code> 会在同一执行上下文里直接运行命令。这解释了为什么脚本里的多个写操作对其他客户端表现为“一起出现”，也解释了为什么脚本复制的是写效果而不是脚本文本。</p>
+</section>
+<section id="multi" aria-labelledby="h-multi"><h2 id="h-multi">MULTI / EXEC：排队而不是立即执行</h2>
+<p>发起 <code>MULTI</code> 后，服务器并不会马上执行后续命令，而是在客户端对象上置一个标记（<code>CLIENT_MULTI</code>）。之后的普通命令被 <code>queueMultiCommand()</code> 追加到该客户端的命令队列，服务器只回 <code>+QUEUED</code>。真正的执行发生在 <code>EXEC</code>：<code>execCommand()</code> 遍历队列，逐条调用 <code>call()</code>，再把结果打包返回。</p>
+<p>两种“失败”要分开看。若命令在<strong>入队时</strong>就不合法（未知命令、参数个数错），客户端会被标记 <code>CLIENT_DIRTY_EXEC</code>；执行 <code>EXEC</code> 时会直接返回错误（<code>EXECABORT</code>），整个队列被丢弃。而若命令<strong>入队合法、运行时才错</strong>（比如对字符串执行 <code>INCR</code> 得到 <code>WRONGTYPE</code>），则<strong>不会回滚</strong>——其余命令照常执行，错误只出现在那一条的回复里。</p>
+<figure class="figure"><svg role="img" aria-labelledby="fig26-2-t" aria-describedby="fig26-2-d" viewBox="0 0 720 210" xmlns="http://www.w3.org/2000/svg"><title id="fig26-2-t">事务：入队、检查、一次性执行</title><desc id="fig26-2-d">MULTI 置位 CLIENT_MULTI 后命令被排队；EXEC 时若带 CLIENT_DIRTY_CAS 或 CLIENT_DIRTY_EXEC 则中止并丢弃队列，否则逐条 call() 执行。</desc><rect width="720" height="210" rx="16" fill="#f6fbf9"/><g font-family="system-ui,sans-serif" font-size="12" text-anchor="middle"><rect x="24" y="80" width="140" height="50" rx="8" fill="#e1f4f0" stroke="#167e80"/><text x="94" y="110" fill="#1d3438">MULTI</text><rect x="184" y="80" width="170" height="50" rx="8" fill="#efecf9" stroke="#6654a7"/><text x="269" y="102" fill="#1d3438">命令入队</text><text x="269" y="120" font-size="11" fill="#52666b">+QUEUED</text><rect x="374" y="80" width="150" height="50" rx="8" fill="#fcf0e9" stroke="#c9664a"/><text x="449" y="102" fill="#1d3438">EXEC 检查</text><text x="449" y="120" font-size="11" fill="#52666b">CAS / EXEC 脏标记</text><rect x="544" y="80" width="152" height="50" rx="8" fill="#fff" stroke="#167e80"/><text x="620" y="110" fill="#1d3438">逐条 call()</text><g stroke="#167e80" stroke-width="2" fill="none"><path d="M164 105 H184"/><path d="M354 105 H374"/><path d="M524 105 H544"/></g><text x="449" y="160" fill="#a5462c">脏标记 → 中止，回 Null，丢弃队列</text><text x="620" y="160" fill="#52666b">无回滚</text></g></svg><figcaption>图 2 · 事务的两阶段。入队阶段只做语法性检查，真正的执行集中在 <code>EXEC</code>；这段执行也不会与别的客户端命令交错。</figcaption></figure>
+<p>因为 <code>EXEC</code> 在事件循环的单次迭代内跑完整个队列而不让出，所以队列里的命令对其他客户端看起来是一次性生效的。这是“原子性”在 Redis 里的含义，而不是“要么全部成功、要么全部回滚”。</p>
+</section>
+<section id="watch" aria-labelledby="h-watch"><h2 id="h-watch">WATCH：乐观锁与 CLIENT_DIRTY_CAS</h2>
+<p><code>WATCH key</code> 提供的是<strong>乐观并发控制</strong>，不是加锁。实现在 <code>multi.c</code> 的 <code>watchCommand()</code>：它把这个 key 记到客户端的观望集合，并把该客户端登记到数据库的观望表（<code>db-&gt;watched_keys</code>，key 到客户端列表的映射）。</p>
+<p>一旦任何客户端改动了被观望的 key，<code>signalModifiedKey()</code> 会触发 <code>touchWatchedKey()</code>，给所有观望它的客户端打上 <code>CLIENT_DIRTY_CAS</code> 标记。随后这些客户端发 <code>EXEC</code> 时，只要 <code>CLIENT_DIRTY_CAS</code>（或 <code>CLIENT_DIRTY_EXEC</code>）已置位，事务就会中止并返回空（Null）结果。这正好对应“先读-再改”的竞态：读之后被人插了写，重试即可。</p>
+<p>几个使用细节：<code>WATCH</code> 必须在 <code>MULTI</code> 之前发出，在 <code>MULTI</code> 内再用会报错；<code>EXEC</code>、<code>DISCARD</code>、<code>UNWATCH</code> 都会清除观望；观望的是“是否被改动”，而不是值是否变化（即使改回原值也会标脏）。另外，key 过期也可能触发这一机制，因此不要把过期当作与事务无关的事件。</p>
+</section>
+<section id="atomic" aria-labelledby="h-atomic"><h2 id="h-atomic">脚本与事务分别保证什么</h2>
+<p>把两者放在一起对比，能避免“用错工具”。它们都利用了单线程的“不切换”，但失败处理、出错回滚与是否可中断都不同。</p>
+<div class="table-scroll" role="region" tabindex="0" aria-label="脚本与事务的对比"><table><thead><tr><th scope="col">维度</th><th scope="col">Lua 脚本</th><th scope="col">MULTI / EXEC 事务</th></tr></thead><tbody><tr><td>中间是否可被其他命令插入</td><td>否</td><td>否（EXEC 内不切换）</td></tr><tr><td>失败是否回滚</td><td>否，已执行的写保留</td><td>否，除入队阶段错误会整体丢弃</td></tr><tr><td>能否提前中断</td><td>慢脚本可达 <code>-BUSY</code>，可尝试 <code>SCRIPT KILL</code>（已写则不行）</td><td>队列已定，EXEC 一次性跑完</td></tr><tr><td>是否需要缓存/键声明</td><td><code>EVALSHA</code> 依赖脚本缓存</td><td>依赖 <code>WATCH</code> 做乐观校验</td></tr></tbody></table></div>
+<p>结论：两者提供的是<strong>“中间不被打断”的执行边界</strong>，而不是数据库意义上的原子提交。要处理并发下的“读-改-写”，用 <code>WATCH</code> 或把逻辑写进脚本；要强持久性，靠上一章的 RDB/AOF 与 <code>appendfsync</code>，而不是靠事务命令本身。</p>
+<div class="simulator" data-lua-demo><label for="sim-lua">选择一种需求，看该用哪种机制</label><select id="sim-lua"><option value="combo">多步操作要一起生效</option><option value="rw">先读再写，怕被并发插队</option><option value="rollback">希望出错全部回滚</option><option value="slow">脚本意外跑了很久</option></select><div data-output class="sim-output" role="status" aria-live="polite"></div><p class="muted" style="font-size:.79rem;margin-bottom:0">交互仅用于复习机制选择，不给具体实现代码。</p></div>
+</section>
+<section id="experiment" aria-labelledby="h-experiment"><h2 id="h-experiment">对照实验：观察排队与中断</h2>
+<p>在临时端口上启动实例，先看事务的排队与 <code>WATCH</code> 失败，再看脚本缓存命不命中。</p>
+<pre><code>./src/redis-server --port 6390 --save &quot;&quot; --appendonly no
+# 终端 A：观察排队与执行
+./src/redis-cli -p 6390
+&gt; MULTI
+&gt; SET t:1 a
+&gt; INCR t:1
+&gt; EXEC
+# 预期：SET、INCR 均先回 QUEUED；EXEC 返回两行的数组；第二条预期为整数错误（INCR 非整数值）
 
-        <h2>第26章：Lua 脚本与事务</h2>
+# WATCH 实验（两个终端）：
+# 终端 A：
+&gt; WATCH t:watch
+&gt; MULTI
+&gt; SET t:watch 1
+# 终端 B（在 A 发出 EXEC 之前）：
+./src/redis-cli -p 6390 SET t:watch 999
+# 回到终端 A：
+&gt; EXEC
+# 预期：因观望的 key 被他人修改，EXEC 返回 (nil)（空回复）
 
-        <p>大家好，我是你们的讲师。前几章我们详细解剖了 Redis 的网络 IO 和命令处理流程，你已经知道了一条 SET 命令从网卡到内核再到 redisServer 的完整旅程。但 Redis 不仅仅是一个单命令执行器——它还提供了<strong>事务</strong>和<strong>Lua 脚本</strong>两种机制，让你能批量执行多条命令并保证原子性。很多同学把 Lua 脚本单纯当成"原子性批处理"，把事务当成"简化版脚本"，但如果你读过源码就会发现：这两套机制尽管目标相似，却走了完全不同的实现路径，各自的性能特性和适用场景差异巨大。</p>
-
-        <p>本章我们从源码层面深入 <code>script.c</code> / <code>script_lua.c</code> 和 <code>multi.c</code>，看看 Lua 引擎是怎么嵌入 Redis 的，MULTI/EXEC 事务又是如何用状态机和命令队列拼凑出"原子性"的。理解了这些，你才能真正用好 EVAL 和 MULTI，避免那些让人头皮发麻的生产事故。</p>
-
-        <h2>Lua 脚本在 Redis 中的位置</h2>
-
-        <p>Redis 从 2.6 版本开始嵌入了 <strong>Lua 5.1</strong> 解释器，这是整个 <code>deps/lua/</code> 目录存在的意义。为什么是 Lua？因为 Lua 的解释器极其轻量，核心代码只有约 2 万行 C 代码，编译后体积仅 100KB 左右，且提供了沙箱化执行的能力。这些特性让 Lua 成为嵌入到 Redis 这样追求极致性能的系统中的理想选择。</p>
-
-        <p>Lua 引擎在 Redis 中的核心骨架由三个文件构成：</p>
-
-        <ul>
-            <li><strong><code>script.c</code></strong>：脚本管理的通用框架层。它定义了脚本执行的生命周期——加载、缓存、执行、超时中断、复制。它不直接与 Lua 交互，而是通过一个抽象的 <code>scriptRun()</code> 接口与后端对接，这个设计其实为后来引入的 <strong>Redis Function</strong>（7.0+）奠定了基础。</li>
-            <li><strong><code>script_lua.c</code></strong>：Lua 引擎的具体实现。它创建 <code>lua_State</code> 虚拟机，注册 Redis 提供的 C 函数（如 <code>redis.call</code>、<code>redis.pcall</code>），处理错误和类型转换。</li>
-            <li><strong><code>functions.c</code></strong>：7.0 引入的 Redis Function 子系统，可以理解为脚本的"一等公民"版——脚本被注册到 Redis 中并持久化到 RDB/AOF，不像 EVAL 那样依赖客户端重复发送。</li>
-        </ul>
-
-        <div class="tip">
-            <strong>小贴士：</strong>每个连接到 Redis 的客户端都有一个独立的 <code>lua_State</code> 吗？不是的。Redis 全局只维护<strong>一个</strong> <code>lua_State</code>，所有脚本共享同一个 Lua 环境。这意味着一个脚本中定义的全局变量会被其他脚本看到——虽然实践中很少这样用，但了解这个细节有助于你理解 Lua 沙箱的安全边界。
-        </div>
-
-        <h2>EVAL / EVALSHA 源码解析</h2>
-
-        <p>当我们执行 <code>EVAL "return redis.call('GET', KEYS[1])" 1 mykey</code> 时，Redis 内部发生了什么？让我们走进 <code>evalCommand</code> 的核心流程：</p>
-
-        <pre><code>/* script_lua.c — evalCommand 简化流程 */
-void evalCommand(client *c) {
-    /* 1. 检查脚本是否为 SHA1 格式 */
-    if (isSHA1(c-&gt;argv[1]-&gt;ptr)) {
-        /* 尝试从缓存字典中查找 */
-        sds sha = c-&gt;argv[1]-&gt;ptr;
-        if (dictFind(server.lua_scripts, sha) == NULL) {
-            addReplyError(c, "NOSCRIPT No matching script");
-            return;
-        }
-        evalShaCommand(c);  /* 走 EVALSHA 路径 */
-        return;
-    }
-
-    /* 2. 从参数中分离 KEYS[] 和 ARGV[] */
-    int numkeys = atoi(c-&gt;argv[2]-&gt;ptr);
-    /* 3. 创建 Lua 函数：将脚本包装为 f_&lt;SHA1&gt; 函数 */
-    char funcname[256];
-    int sha1_len = 40 + 2;  /* f_ + 40 位 hex */
-    /* 计算脚本的 SHA1 摘要 */
-    sha1hex(sha1, c-&gt;argv[1]-&gt;ptr, sdslen(c-&gt;argv[1]-&gt;ptr));
-    /* 4. 调用 luaCallFunction 执行 */
-    luaCallFunction(c, funcname, numkeys, 0);
-}</code></pre>
-
-        <p>这个流程中有几个关键设计值得一提：</p>
-
-        <ul>
-            <li><strong>SHA1 摘要：</strong>每个脚本在执行前都会计算 SHA1 哈希，这个哈希既用作缓存键（存入 <code>server.lua_scripts</code> 字典），也用作函数名。所以 <code>EVALSHA</code> 可以直接用 SHA1 找到已缓存的脚本，避免重复传输脚本体。</li>
-            <li><strong>server.lua_scripts 字典：</strong>这是一个 <code>dict *</code>，以 SHA1 为 key，以脚本源码的 <code>sds</code> 为 value。所有通过 EVAL 或 SCRIPT LOAD 加载的脚本都会缓存到这里，直到 <code>SCRIPT FLUSH</code> 或服务器重启才会清空。</li>
-            <li><strong>脚本缓存不上限：</strong>这是有意为之——antirez 认为脚本的数量应该由开发者控制，Redis 不做强制限制。但如果滥用，会导致内存持续增长。</li>
-        </ul>
-
-        <p>再看 <code>SCRIPT LOAD</code> 的实现——它只做了两件事：计算 SHA1、存入 <code>server.lua_scripts</code>，但不执行脚本。这比 EVAL 少了一个执行步骤，适合在初始化阶段预先加载脚本。</p>
-
-        <h2>脚本执行机制</h2>
-
-        <p>当 <code>luaCallFunction</code> 真正执行 Lua 脚本时，内部有一整套精心设计的参数传递和错误处理机制：</p>
-
-        <pre><code>/* script_lua.c — luaCallFunction 核心逻辑 */
-int luaCallFunction(client *c, char *funcname, int numkeys, int flags) {
-    lua_State *lua = server.lua;  /* Redis 全局唯一的 Lua VM */
-
-    /* 1. 将 KEYS[] 推入 Lua 栈 */
-    lua_newtable(lua);
-    for (int j = 0; j &lt; numkeys; j++) {
-        lua_pushstring(lua, c-&gt;argv[j + 3]-&gt;ptr);  /* argv[3] 之后是 key */
-        lua_rawseti(lua, -2, j + 1);
-    }
-
-    /* 2. 将 ARGV[] 推入 Lua 栈 */
-    int arg_idx = 3 + numkeys;
-    lua_newtable(lua);
-    for (int j = arg_idx; j &lt; c-&gt;argc; j++) {
-        lua_pushstring(lua, c-&gt;argv[j]-&gt;ptr);
-        lua_rawseti(lua, -2, j - arg_idx + 1);
-    }
-
-    /* 3. 执行 Lua 函数 */
-    if (lua_pcall(lua, 2, 1, 0) != LUA_OK) {
-        /* 处理 Lua 运行时错误 */
-        addReplyErrorFormat(c, "ERR Error running script: %s",
-                            lua_tostring(lua, -1));
-        lua_pop(lua, 1);
-        return C_ERR;
-    }
-
-    /* 4. 将 Lua 返回值转换为 Redis 回复 */
-    luaReplyToRedisReply(c, lua);
-    return C_OK;
-}</code></pre>
-
-        <p>执行过程中的两个重要机制：</p>
-
-        <ul>
-            <li><strong>lua-replicate-commands：</strong>这个配置项（默认开启，7.0+ 成为唯一行为）控制脚本内的写命令如何复制到从库。开启时，脚本中的每个写命令会被<strong>单独复制</strong>（逐命令复制），而不是将整个脚本作为整体复制。这样做的好处是：主库和从库各自执行相同的命令序列，即使 Lua 本身有随机性（比如 <code>math.random</code>），也不会导致主从不一致。</li>
-            <li><strong>脚本超时中断：</strong>Redis 默认的 <code>lua-time-limit</code> 是 5000ms。当脚本运行超过这个阈值，Redis 不会立即杀死它（那样会破坏 Lua VM 的状态），而是给脚本发一个"你超时了，请自己结束"的信号。Redis 通过 <code>lua_timedout</code> 标志位标记超时状态，每次 <code>redis.call()</code> 返回时检查这个标志。这意味着：如果你的脚本不调用 <code>redis.call()</code>，只是纯 Lua 做死循环，Redis 是无法中途中断它的——这是 Lua 沙箱的一个硬伤。</li>
-        </ul>
-
-        <div class="warning">
-            <strong>踩坑实录：</strong>我曾经在一个电商大促项目中遇到过一次严重故障。运营同学写了一个 Lua 脚本，里面循环调用了 5 万次 <code>redis.call('GET', key)</code> 做复杂的价格校验，本意是想原子性保证库存扣减。但问题是，这个脚本执行耗时达到了 8 秒——直接导致整个 Redis 实例在这 8 秒内无法服务任何其他请求。所有依赖这个 Redis 实例的服务集体超时，雪崩效应导致线上瘫痪了 15 分钟。事后分析：首先，EVAL 每次都要传输完整的脚本体，网络开销大；其次，脚本执行期间单线程阻塞了所有其他命令。正确的做法是：用 <code>SCRIPT LOAD</code> 预先加载脚本得到 SHA1，然后在业务代码中用 <code>EVALSHA</code> 调用；更重要的是，<strong>脚本执行时间必须控制在 1ms 以下</strong>的原则绝对不能突破。
-        </div>
-
-        <h2>事务实现：MULTI / EXEC / WATCH</h2>
-
-        <p>事务在 Redis 中的实现与 Lua 脚本有本质不同。如果说 Lua 脚本是"去 C 侧执行自定义逻辑"，那么事务就是"在 C 侧批量排队执行已有命令"。事务的核心文件是 <code>multi.c</code>，整个流程围绕一个简单的<strong>状态机</strong>展开。</p>
-
-        <pre><code>/* multi.c — MULTI 命令设置事务标志 */
-void multiCommand(client *c) {
-    /* 设置 CLIENT_MULTI 标志位，标记客户端处于事务模式 */
-    c-&gt;flags |= CLIENT_MULTI;
-    addReply(c, shared.ok);
-}
-
-/* multi.c — 事务中的命令不立即执行，而是入队 */
-int processCommand(client *c) {
-    /* 如果客户端处于事务模式，将命令入队而非执行 */
-    if (c-&gt;flags &amp; CLIENT_MULTI) {
-        /* 某些命令（如 WATCH、MULTI、EXEC、DISCARD）不受事务影响 */
-        if (!(c-&gt;cmd-&gt;proc == execCommand ||
-              c-&gt;cmd-&gt;proc == discardCommand ||
-              c-&gt;cmd-&gt;proc == multiCommand ||
-              c-&gt;cmd-&gt;proc == watchCommand)) {
-            queueMultiCommand(c);  /* 入队到 c-&gt;mstate.commands */
-            addReply(c, shared.queued);
-            return C_OK;  /* 不入队时不执行 */
-        }
-    }
-    /* 正常执行路径... */
-}
-
-/* multi.c — EXEC 批量执行所有已入队命令 */
-void execCommand(client *c) {
-    /* 1. 检查 WATCH 键是否被修改 */
-    if (isWatchedKeyModified(c)) {
-        c-&gt;flags |= CLIENT_DIRTY_CAS;
-    }
-
-    /* 2. 如果 WATCH 检测到修改，事务失败 */
-    if (c-&gt;flags &amp; CLIENT_DIRTY_CAS) {
-        addReply(c, shared.nullarray[c-&gt;resp]);  /* 返回 nil */
-        unwatchAllKeys(c);
-        return;
-    }
-
-    /* 3. 逐条执行已入队的命令 */
-    for (int j = 0; j &lt; c-&gt;mstate.count; j++) {
-        c-&gt;mstate.commands[j].argc = ...;
-        c-&gt;mstate.commands[j].argv = ...;
-        call(c, c-&gt;mstate.commands[j], CMD_CALL_FULL);
-    }
-}</code></pre>
-
-        <p>关键数据结构 <code>client.mstate</code>（multiState 类型）记录了事务的状态：</p>
-
-        <pre><code>/* server.h — multiState 结构体 */
-typedef struct multiState {
-    multiCmd *commands;    /* 已入队的命令数组 */
-    int count;             /* 已入队的命令数量 */
-    int alloc;             /* 已分配的容量 */
-    int cmd_flags;         /* 累积的命令标志 */
-    int cmd_inv_flags;     /* 反转的命令标志 */
-} multiState;
-
-typedef struct multiCmd {
-    robj **argv;           /* 参数数组 */
-    int argc;              /* 参数个数 */
-    struct redisCommand *cmd;  /* 指向命令表条目 */
-} multiCmd;</code></pre>
-
-        <p><strong>WATCH 乐观锁</strong>的实现也很精巧。当客户端执行 <code>WATCH key</code> 时，Redis 将这个客户端注册到 <code>server.watched_keys</code> 字典中。这个字典以 <code>key</code> 为键，以 <code>watchedKey</code> 链表为值，每个 <code>watchedKey</code> 记录了哪个客户端正在监视这个 key。当任何命令修改了这个 key（比如 SET、HSET、DEL 等），都会触发 <code>touchWatchedKey()</code> 函数，将监视该 key 的客户端标记为 <code>CLIENT_DIRTY_CAS</code>。之后这个客户端执行 <code>EXEC</code> 时，看到脏标记就会直接返回 nil——这就是"乐观锁"的全部秘密。</p>
-
-        <h2>Redis 事务 vs ACID</h2>
-
-        <p>很多从关系数据库转过来的同学会问：Redis 事务支持 ACID 吗？答案比你想象的要复杂一些：</p>
-
-        <table>
-            <thead>
-                <tr>
-                    <th>ACID 属性</th>
-                    <th>Redis 事务支持情况</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>原子性（Atomicity）</td>
-                    <td>部分支持。EXEC 批量执行过程中不会被打断，但如果中间某条命令失败，后面的命令<strong>仍然继续执行</strong>，不会回滚</td>
-                </tr>
-                <tr>
-                    <td>一致性（Consistency）</td>
-                    <td>基本支持。数据类型约束在命令执行层面会被检查，不会出现类型混乱</td>
-                </tr>
-                <tr>
-                    <td>隔离性（Isolation）</td>
-                    <td>天然支持。Redis 是单线程执行模型，EXEC 执行期间不会有其他命令穿插</td>
-                </tr>
-                <tr>
-                    <td>持久性（Durability）</td>
-                    <td>取决于持久化配置。仅 AOF + always fsync 才能保证，但性能代价极高</td>
-                </tr>
-            </tbody>
-        </table>
-
-        <p>Redis 事务<strong>不支持回滚</strong>是 antirez 有意为之的设计决策。他认为：事务中的命令失败只有两种可能，一是语法错误（命令本身写错了），这类错误应该在入队时就发现；二是运行时错误（比如对 string 类型执行了 LPUSH），这类错误属于<strong>编程错误</strong>，应该修正代码而不是依赖回滚。与其在 Redis 中实现复杂的回滚机制（这会影响性能和代码复杂度），不如让开发者在上层检测并处理错误。</p>
-
-        <div class="tip">
-            <strong>小贴士：</strong>语法错误和运行时错误的区别很关键。语法错误（比如命令名写错）会在 <code>queueMultiCommand</code> 时被检测到，Redis 会直接拒绝整个 EXEC。但运行时错误（比如对 string 执行 LPUSH）只有在 EXEC 执行到那条命令时才会发现——此时前面的命令已经执行完毕，无法撤回。这也意味着在 EXEC 返回的数组结果中，可能既有成功回复也有错误回复，你需要自己检查每个结果。
-        </div>
-
-        <h2>脚本与事务的原子性保证</h2>
-
-        <p>事务和 Lua 脚本都声称自己具有"原子性"，但此原子性非彼原子性。我们来做一个对比：</p>
-
-        <p><strong>Redis 事务的原子性：</strong>MULTI 加 EXEC 保证了多条命令在<strong>执行批次</strong>上的原子性——EXEC 命令被处理时，Redis 会在这个事件循环迭代中连续执行所有入队命令，中间不处理其他客户端的请求。但如果执行到一半机器崩溃，已经执行的部分不会回滚。</p>
-
-        <p><strong>Lua 脚本的原子性：</strong>整个脚本作为一个整体在事件循环中执行，期间 Redis 不会处理任何其他命令。而且 Lua 脚本还多了一层保证：如果脚本执行过程中 Redis 崩溃重启，脚本要么完全没执行，要么执行完毕——因为 AOF 和复制日志是以整个脚本为单位记录的。</p>
-
-        <p>在实际生产中，<strong>Lua 脚本通常比事务更受欢迎</strong>，原因很简单：Lua 脚本可以包含条件逻辑和循环，能够实现"读-改-写"这种 CAS 操作，而事务的每条命令都是预先排好的，没有条件判断能力。</p>
-
-        <table>
-            <thead>
-                <tr>
-                    <th>特性</th>
-                    <th>Lua 脚本 (EVAL)</th>
-                    <th>事务 (MULTI/EXEC)</th>
-                    <th>Pipeline</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>原子性</td>
-                    <td>整个脚本原子执行</td>
-                    <td>批量命令原子执行</td>
-                    <td>无保证</td>
-                </tr>
-                <tr>
-                    <td>条件逻辑</td>
-                    <td>支持（if/else/loop）</td>
-                    <td>不支持（命令预编排）</td>
-                    <td>不支持</td>
-                </tr>
-                <tr>
-                    <td>网络往返</td>
-                    <td>1 次（脚本体大时传输开销大）</td>
-                    <td>MULTI + N条QUEUED + EXEC = N+2 次</td>
-                    <td>1 次</td>
-                </tr>
-                <tr>
-                    <td>可调试性</td>
-                    <td>差（黑盒执行）</td>
-                    <td>中（每条命令独立回显）</td>
-                    <td>好</td>
-                </tr>
-                <tr>
-                    <td>缓存支持</td>
-                    <td>EVALSHA + SCRIPT LOAD</td>
-                    <td>不适用</td>
-                    <td>不适用</td>
-                </tr>
-                <tr>
-                    <td>适合场景</td>
-                    <td>复杂原子操作、限流、计数器</td>
-                    <td>批量无依赖操作</td>
-                    <td>批量只读查询</td>
-                </tr>
-            </tbody>
-        </table>
-
-        <div class="highlight">
-            <strong>经验总结：</strong>大多数需要"原子性"的场景，都应该优先考虑 Lua 脚本而不是事务。事务在 Redis 中的地位更像是一个"渐进增强"——当你已经有了一套命令序列，想确保它们不被穿插执行时，套上 MULTI/EXEC 是最简单的改造方式。而如果你需要根据某个 key 的当前值来决定下一步操作，那必须用 Lua 脚本。
-        </div>
-
-        <p>Lua 脚本和事务都是 Redis 在"单线程事件循环"框架下实现原子性的不同思路，它们各自有清晰的适用边界。下一章我们要讨论的话题更加深入——如何通过 <strong>Module</strong> 系统完全跳出 Redis 内置命令的限制，用 C/C++ 扩展 Redis 的能力边界。从"怎么用"到"怎么扩展"，这正是源码阅读带来的进阶之路。</p>
-
-        <div class="footer-nav">
-            <a href="25.html">← 上一章</a>
-            <a href="index.html">📖 返回目录</a>
-            <a href="27.html">下一章 →</a>
-        </div>
-    </div>
-</div>
-</div>
-</body>
-</html>
+# 脚本缓存：
+./src/redis-cli -p 6390 EVAL &quot;return redis.call('SET', KEYS[1], ARGV[1])&quot; 1 lua:demo hello
+SHA=$(./src/redis-cli -p 6390 SCRIPT LOAD &quot;return redis.call('GET', KEYS[1])&quot;)
+./src/redis-cli -p 6390 EVALSHA &quot;$SHA&quot; 1 lua:demo
+./src/redis-cli -p 6390 SCRIPT EXISTS &quot;$SHA&quot;
+./src/redis-cli -p 6390 SHUTDOWN NOSAVE</code></pre>
+<p>预期观察：<code>MULTI</code> 后的命令回 <code>QUEUED</code>；<code>INCR</code> 对非整数值会得到运行时错误，但事务<strong>不会回滚</strong>前面的 <code>SET</code>；被 <code>WATCH</code> 的 key 遭外部修改后 <code>EXEC</code> 返回空回复；<code>SCRIPT EXISTS</code> 返回 <code>1</code> 表示缓存命中。把脚本改成在 Cluster 上执行时，要保证 <code>KEYS</code> 落在同一槽，否则会报跨槽错误。</p>
+</section>
+<section id="limits" aria-labelledby="h-limits"><h2 id="h-limits">把“原子”与 ACID 分开</h2>
+<ul><li><strong>原子不等于可回滚</strong>：脚本与事务都不会因为中途出错而撤销已完成的写。</li><li><strong>事务入队只查语法</strong>：真正的运行时错误（如类型错）不会阻止其余命令执行。</li><li><strong>慢脚本是全实例问题</strong>：<code>lua-time-limit</code> 只是开始拒绝其他请求，不是一个硬性中断。</li><li><strong>WATCH 是乐观校验</strong>：它不阻止别人改，只在提交时告诉你“改过了”，需要自行重试。</li><li><strong>缓存以 SHA1 为键</strong>：脚本体任何改动都会变成另一个 SHA1，<code>EVALSHA</code> 可能未命中。</li><li><strong>与复制的关系</strong>：Redis 7 中脚本按写效果传播，副本重放的是命令而非脚本；无法整除的随机行为要小心。</li><li><strong>版本边界</strong>：<code>script.c</code>/<code>script_lua.c</code> 分层、<code>CLIENT_DIRTY_CAS</code> 与 <code>lua-time-limit</code> 均针对 <code>redis/redis@7.2.4</code>。</li></ul>
+<p>下一章跳出内置能力：在 Redis 进程内用 Module API 注册新命令与自定义数据类型。</p>
+</section>
+<section class="sources" id="sources" aria-labelledby="h-sources"><h2 id="h-sources">源码与参考</h2><p>以下链接固定到 <code>redis/redis@7.2.4</code>。</p><ol><li><a href="https://github.com/redis/redis/blob/7.2.4/src/script.c">script.c：EVAL/EVALSHA/SCRIPT 命令层</a></li><li><a href="https://github.com/redis/redis/blob/7.2.4/src/script_lua.c">script_lua.c：Lua 引擎绑定与 luaCallFunction</a></li><li><a href="https://github.com/redis/redis/blob/7.2.4/src/multi.c">multi.c：multiCommand / queueMultiCommand / execCommand / watchCommand</a></li><li><a href="https://github.com/redis/redis/blob/7.2.4/src/server.h">server.h：CLIENT_MULTI / CLIENT_DIRTY_CAS / CLIENT_DIRTY_EXEC 标志</a></li></ol></section>
+<nav class="pager" aria-label="前后章节"><a href="25.html">← 第 25 章</a><a href="27.html">第 27 章 →</a></nav>
+</article></main></div>
+<footer class="footer"><div class="max"><a href="../index.html">返回课程主页</a></div></footer>
+<script src="../assets/js/third-article.js" defer></script>
+<script>(()=>{"use strict";const map={combo:"脚本（EVAL）或事务（MULTI/EXEC）都能让多步不被打断；两者都不回滚，选哪个看是否需要条件判断。",rw:"用 WATCH + MULTI/EXEC 做乐观校验：key 被改则 EXEC 返回空，重试即可；也可把逻辑写进脚本。",rollback:"两者都不提供回滚；已执行的写会保留。需要回滚要在应用层补偿，或先写临时键再提交。",slow:"超过 lua-time-limit 后其他客户端收到 -BUSY；可用 SCRIPT KILL（未写数据时）或 SHUTDOWN NOSAVE。"};const box=document.querySelector("[data-lua-demo]");if(box){const s=box.querySelector("select"),o=box.querySelector("[data-output]");const up=()=>{o.textContent=map[s.value]||"";};s.addEventListener("change",up);up();}})();</script>
+</body></html>
