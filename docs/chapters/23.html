@@ -1,382 +1,87 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.5, user-scalable=yes">
-    <title>第23章 性能诊断工具链</title>
-    <link rel="stylesheet" href="theme.css">
-</head>
-<body>
-<div class="double-border">
-<div class="container">
-    <div class="sidebar">
-        <h3>🔧 课程目录</h3>
-        <ul class="chapter-list">
-            <li><a href="01.html">第1章 Redis源码全景图</a></li>
-            <li><a href="02.html">第2章 编译与调试环境搭建</a></li>
-            <li><a href="03.html">第3章 内存管理：zmalloc与jemalloc</a></li>
-            <li><a href="04.html">第4章 SDS动态字符串</a></li>
-            <li><a href="05.html">第5章 链表、压缩列表与listpack</a></li>
-            <li><a href="06.html">第6章 字典与渐进式rehash</a></li>
-            <li><a href="07.html">第7章 跳表与整数集合</a></li>
-            <li><a href="08.html">第8章 redisObject与编码转换</a></li>
-            <li><a href="09.html">第9章 String与Hash命令实现</a></li>
-            <li><a href="10.html">第10章 List命令与阻塞操作</a></li>
-            <li><a href="11.html">第11章 Set与Sorted Set命令实现</a></li>
-            <li><a href="12.html">第12章 Stream、Geo与HyperLogLog</a></li>
-            <li><a href="13.html">第13章 事件循环（上）：文件事件</a></li>
-            <li><a href="14.html">第14章 事件循环（下）：时间事件</a></li>
-            <li><a href="15.html">第15章 网络IO架构</a></li>
-            <li><a href="16.html">第16章 命令处理全流程</a></li>
-            <li><a href="17.html">第17章 RDB持久化</a></li>
-            <li><a href="18.html">第18章 AOF与混合持久化</a></li>
-            <li><a href="19.html">第19章 键过期与内存淘汰</a></li>
-            <li><a href="20.html">第20章 主从复制（上）</a></li>
-            <li><a href="21.html">第21章 主从复制（下）</a></li>
-            <li><a href="22.html">第22章 Sentinel哨兵与Cluster集群</a></li>
-            <li><a href="23.html" class="active">第23章 性能诊断工具链</a></li>
-            <li><a href="24.html">第24章 生产环境踩坑指南</a></li>
-            <li><a href="25.html">第25章 源码级问题定位实战</a></li>
-            <li><a href="26.html">第26章 Lua脚本与事务</a></li>
-            <li><a href="27.html">第27章 Module开发实战</a></li>
-            <li><a href="28.html">第28章 Redis 8.x前瞻与手写Mini-Redis</a></li>
-        </ul>
-    </div>
-    <div class="main-content">
-
-        <h2>第23章：性能诊断工具链</h2>
-
-        <p>大家好，我是你们的讲师。想象这样一个场景：你在凌晨两点被 on-call 电话叫醒，用户反馈线上 Redis 的 P99 延迟从平时的 1ms 飙到了 500ms。你登录到服务器，redis-cli 敲了一个 <code>PING</code>，返回了 "PONG"——所以 Redis 还活着。然后呢？面对一个复杂的生产系统，从哪个指标开始查？用什么工具定位根因？</p>
-
-        <p>很多运维同学遇到这类问题的第一反应是"重启大法"，或者盲目地增大 <code>maxmemory</code>、调整 <code>hz</code> 参数。但实际上，Redis 自带了一整套从应用层到系统层的诊断工具链——从 INFO 命令输出的数十个指标，到 latency monitor 的毛刺采样，再到 slowlog 的命令级别耗时统计。这一章，我们就把这些工具的源码原理和实战用法讲透。一旦你理解了每个指标"从哪里来、怎么算的"，诊断问题就不再是拍脑袋，而是一条逻辑清晰的推理链。</p>
-
-        <table>
-            <thead>
-                <tr>
-                    <th>诊断工具</th>
-                    <th>适用场景</th>
-                    <th>数据来源</th>
-                    <th>定位精度</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>INFO 命令</td>
-                    <td>全局健康检查、性能基线</td>
-                    <td><code>server.c</code> 运行时计数器</td>
-                    <td>秒级宏观</td>
-                </tr>
-                <tr>
-                    <td>LATENCY 系列</td>
-                    <td>延迟毛刺、周期性抖动</td>
-                    <td><code>latency.c</code> 采样钩子</td>
-                    <td>微秒级</td>
-                </tr>
-                <tr>
-                    <td>SLOWLOG</td>
-                    <td>命令级慢查询</td>
-                    <td><code>slowlog.c</code> 命令耗时统计</td>
-                    <td>命令粒度</td>
-                </tr>
-                <tr>
-                    <td>redis-benchmark</td>
-                    <td>压测、容量规划</td>
-                    <td>客户端工具（独立进程）</td>
-                    <td>QPS/延迟分布</td>
-                </tr>
-                <tr>
-                    <td>perf + FlameGraph</td>
-                    <td>CPU 热点、内核态阻塞</td>
-                    <td>Linux perf_events</td>
-                    <td>函数级</td>
-                </tr>
-                <tr>
-                    <td>MEMORY 系列</td>
-                    <td>内存异常、碎片分析</td>
-                    <td><code>zmalloc.c</code> 统计 + <code>object.c</code></td>
-                    <td>键级</td>
-                </tr>
-            </tbody>
-        </table>
-
-        <h2>INFO 命令全解</h2>
-
-        <p>INFO 命令是 Redis 诊断的"第一站"。它的实现代码在 <code>server.c</code> 的 <code>infoCommand()</code> 函数中——本质上就是一个大型的 sprintf，把 server 结构体中的各种计数器和配置项格式化输出。我们可以通过 <code>INFO ALL</code> 获取全部信息，也可通过 <code>INFO server</code>、<code>INFO memory</code> 等按 section 查询。</p>
-
-        <p>我们来逐一拆解每个 section 的关键指标和对应的源码出处：</p>
-
-        <h3>Server Section</h3>
-        <p>记录了 Redis 进程的基本信息，包括 <code>uptime_in_seconds</code>（进程存活时长）、<code>config_file</code>（配置文件路径）、<code>tcp_port</code>、<code>server_id</code> 等。其中最有诊断价值的是 <code>uptime_in_seconds</code>——如果这个值很短，说明 Redis 刚发生过重启，那最近的性能抖动很可能是重启后的预热（page cache 冷、client 重连 storm）导致的。</p>
-
-        <h3>Clients Section</h3>
-        <p><code>connected_clients</code> 是当前连接数，<code>client_longest_output_list</code> 是输出缓冲区最大的 client 的 pending 数据量。这个字段尤其值得关注——如果它持续增长，说明某个 consumer 消费能力跟不上，输出缓冲区在无限膨胀，最终会触发 <code>client-output-buffer-limit</code> 断开连接。对应的源码逻辑在 <code>networking.c</code> 的 <code>clientsCronHandleTimeout()</code> 和 <code>writeToClient()</code> 中。</p>
-
-        <h3>Memory Section</h3>
-
-        <pre><code># INFO memory 关键指标
-used_memory:             # zmalloc_used_memory() 实时统计
-used_memory_rss:         # RSS，进程物理内存占用
-mem_fragmentation_ratio: # RSS / used_memory，碎片率
-used_memory_peak:        # 历史峰值
-total_system_memory:     # 系统总内存
-maxmemory:               # 配置的最大内存限制</code></pre>
-
-        <p><code>mem_fragmentation_ratio</code> 是最容易被误解的指标。很多同学看到比值大于 1.5 就紧张，但事实上 Redis 的 zmalloc 统计的是"实际申请的内存"，而 RSS 包含了内存碎片、jemalloc 的 arena 预分配、以及共享库的代码段。jemalloc 倾向于预分配大块内存并切分使用，所以 1.1~1.3 是正常范围，超过 1.5 才需要关注。如果小于 1.0，说明操作系统发生了 swap——这比碎片严重一百倍。</p>
-
-        <div class="tip">
-            <strong>小贴士：</strong>INFO 的每个 section 都对应 <code>server.c</code> 中一个 <code>genRedisInfoString()</code> 的子函数。如果你想添加自定义指标，比如某个业务 key 的命中率，可以直接在对应的 gen 函数中追加一行 <code>info = sdscatprintf(info, "my_metric:%d\r\n", val);</code>
-        </div>
-
-        <h3>Stats Section</h3>
-        <p>这是查询性能问题的黄金入口。重点关注：<code>total_commands_processed</code>（QPS 推算）、<code>instantaneous_ops_per_sec</code>（瞬时 OPS）、<code>total_connections_received</code>（连接速率，突增可能预示断线重连风暴）、<code>keyspace_hits / keyspace_misses</code>（缓存命中率）、<code>expired_keys</code>（过期淘汰速率）、<code>evicted_keys</code>（内存淘汰速率，如果 > 0 说明 maxmemory 太小）。</p>
-
-        <h3>Replication / CPU / Cluster / Keyspace</h3>
-        <p>Replication section 中的 <code>master_repl_offset</code> 和 <code>slave_lag</code> 是判断复制延迟的依据。CPU section 的 <code>used_cpu_sys</code> 和 <code>used_cpu_user</code> 可用来判断是否有异常的系统调用开销。Keyspace section 展示每个 db 的 key 数量和过期 key 数量——如果某个 db 的 key 数量突然暴涨，那可能是业务侧的缓存 key 未设过期时间，会导致 <code>expired_keys</code> 统计归零，内存只增不减。</p>
-
-        <h2>Latency Monitor</h2>
-
-        <p>Latency monitor 是 Redis 中一个非常精巧的"延迟显微镜"，它的源码在 <code>latency.c</code> 中，核心思想是：在关键路径上插入采样钩子，记录事件循环中超过阈值的延迟毛刺。启用方式很简单：</p>
-
-        <pre><code># 设置延迟采样阈值（微秒），超过此值的操作会被记录
-CONFIG SET latency-monitor-threshold 100
-
-# 查看延迟诊断报告
-LATENCY DOCTOR
-
-# 查看延迟事件的原始采样数据
-LATENCY HISTORY command
-
-# 查看延迟事件的时空分布图（ASCII 图表）
-LATENCY GRAPH</code></pre>
-
-        <p>我们来看它的源码实现。在 <code>ae.c</code> 的事件循环中，antirez 插入了关键的延迟测量点：</p>
-
-        <pre><code>/* ae.c 中的延迟采样 —— 位于 aeProcessEvents() 中 */
-int aeProcessEvents(aeEventLoop *eventLoop, int flags) {
-    int processed = 0, numevents;
-
-    if (eventLoop->maxfd != -1 ||
-        ((flags & AE_TIME_EVENTS) && !(flags & AE_DONT_WAIT))) {
-        int j;
-        struct timeval tv, *tvp;
-        long long latency;
-
-        /* 记录进入 epoll_wait 前的时间戳 */
-        latencyStartMonitor(latency);
-
-        /* epoll_wait 等待事件就绪 */
-        numevents = aeApiPoll(eventLoop, tvp);
-
-        /* 记录 epoll_wait 返回后的时间戳，计算差值 */
-        latencyEndMonitor(latency);
-        latencyAddSampleIfNeeded("eventloop", latency);
-
-        /* 如果 epoll_wait 的延迟超过阈值，记录调用栈 */
-        if (latency > server.latency_monitor_threshold) {
-            latencyMonitorEvent("eventloop", latency, NULL);
-        }
-    }
-    // ... 处理文件事件、时间事件
-}</code></pre>
-
-        <p>这里的 <code>latencyStartMonitor</code> 和 <code>latencyEndMonitor</code> 本质上就是读取 <code>clock_gettime(CLOCK_MONOTONIC)</code> 或 <code>gettimeofday()</code> 来计算微秒级耗时。<code>latencyAddSampleIfNeeded</code> 会检查耗时是否超过 <code>latency-monitor-threshold</code>，只有超过的样本才被记录到 <code>server.latency_events</code> 字典中。</p>
-
-        <p>每个延迟事件类型都被组织成一个链表，记录了最近 160 个采样的时间戳和延迟值，以及触发时的事件循环上下文。<code>LATENCY GRAPH</code> 用 ASCII 字符画出这些样本的分布，可以直观地看出延迟毛刺的周期性——如果是固定时间间隔出现，那大概率是 cron 任务（过期键清理、AOF 刷盘、rehash）导致的；如果是突发的无规律毛刺，则可能是系统层面的抖动（swap、内核调度、THP 的 page 合并）。</p>
-
-        <div class="highlight">
-            <strong>诊断技巧：</strong>当你发现 "eventloop" 延迟高时，不要马上断定是 Redis 的问题。在 <code>aeApiPoll()</code> 返回前，程序是阻塞在内核的 <code>epoll_wait</code> 上的——如果这段时间很长，说明<strong>没有事件到达</strong>，而不是事件处理慢。真正的问题往往出在 <code>command</code> 延迟事件上，它表示一个命令从解析完成到执行结束的耗时。
-        </div>
-
-        <h2>Slowlog</h2>
-
-        <p>Slowlog 是最简单也最常用的命令级诊断工具。它的源码在 <code>slowlog.c</code> 中，核心数据结构是 <code>slowlogEntry</code>：</p>
-
-        <pre><code>/* slowlog.c —— slowlogEntry 结构体 */
-typedef struct slowlogEntry {
-    robj **argv;            /* 命令参数数组 */
-    int argc;               /* 参数个数 */
-    long long id;           /* 自增的唯一 ID */
-    long long duration;     /* 命令执行耗时（微秒） */
-    time_t time;            /* 命令进入时间（unix 秒戳） */
-    long long curenterr;   /* 当前 errno */
-    sds repr;               /* 命令的字符串表示 */
-} slowlogEntry;</code></pre>
-
-        <p>每条慢查询记录包含命令参数、执行时长（微秒）、时间戳和命令的字符串表示。Redis 使用一个固定长度的链表来存储这些记录，长度由 <code>slowlog-max-len</code> 控制——超过长度时淘汰最旧的记录。慢查询的阈值由 <code>slowlog-log-slower-than</code> 控制，单位微秒，默认 10000（10ms）。</p>
-
-        <p>关键代码在命令执行完成的路径上：</p>
-
-        <pre><code>/* server.c —— call() 函数中，命令执行后进行慢查询判定 */
-void call(client *c, int flags) {
-    long long dirty;
-    ustime_t start, duration;
-    int client_old_flags = c->flags;
-
-    /* 记录命令开始执行的时间戳 */
-    start = server.ustime;
-    c->cmd->proc(c);              /* 执行命令 */
-    duration = ustime() - start;  /* 计算耗时 */
-
-    /* 如果耗时超过阈值，记录 slowlog */
-    if (duration >= server.slowlog_log_slower_than) {
-        slowlogPushEntryIfNeeded(c, c->argv, c->argc, duration);
-    }
-    // ...
-}</code></pre>
-
-        <p>这个代码揭示了一个容易被忽视的事实：<strong>slowlog 记录的是从命令处理函数开始到结束的耗时，不包含网络 IO 和协议解析的时间</strong>。所以如果 slowlog 里显示某个 <code>SET</code> 命令耗时 50ms，那一定不是 SET 本身慢（SET 是 O(1) 的），而是另有原因。我们来看看一个真实的踩坑案例：</p>
-
-        <div class="warning">
-            <strong>踩坑实录：</strong>曾经有一个团队反馈线上 Redis 的 slowlog 中频繁出现 SET 命令，时长在 30~100ms 之间。SET 明明是 O(1) 操作，怎么会慢到 100ms？团队排查了硬盘 IO、网络延迟、系统负载，都找不出原因。最后我让他们用 <code>LATENCY HISTORY command</code> 和 <code>LATENCY HISTORY eventloop</code> 对比时间段，发现每当有 BGSAVE 执行时，SET 的慢查询就会集中出现。打开源码一查，真相是：BGSAVE 的 fork() 之后，Linux 的 COW（Copy-On-Write）机制导致 Redis 主进程写入任何内存页时都产生页面复制。在写密集型场景下，COW 开销被成倍放大——SET 命令本身不慢，但 SET 触发的内存写入触发了 COW 页面复制。解决方案是：关闭 THP、调整 <code>repl-backlog-size</code>、将 BGSAVE 安排在低峰期。所以，<strong>slowlog 告诉你"什么命令慢"，但不告诉你"为什么慢"</strong>——你需要结合其他工具做交叉验证。
-        </div>
-
-        <p>从资源消耗的角度，我们可以把慢查询分为两类：</p>
-        <ul>
-            <li><strong>计算密集型的慢命令：</strong>KEYS *、SORT、ZRANGEBYSCORE 等 O(N) 或 O(log N + N) 的命令，慢的原因是 CPU 计算量过大。解决思路是控制集合大小、使用 SCAN 替代 KEYS、或者用 <code>SORT</code> 的 <code>LIMIT</code> 参数限制返回数量。</li>
-            <li><strong>IO 密集型的慢命令：</strong>SWAPDB、FLUSHALL、BGSAVE、AOF rewrite 等命令，慢不是因为 CPU 计算，而是因为 IO 操作（fsync、write、fork）阻塞了事件循环。解决思路是：<code>FLUSHALL ASYNC</code>、控制 AOF rewrite 的频率、<code>replica-serve-stale-data yes</code>。</li>
-        </ul>
-
-        <h2>redis-benchmark</h2>
-
-        <p>redis-benchmark 是 Redis 自带的压测工具，位于 <code>src/redis-benchmark.c</code>。它不是一个运行时的诊断工具，而是在部署前做容量规划、在变更后做性能回归验证的利器。基本用法：</p>
-
-        <pre><code># 基本压测：100个客户端并发，50000个请求
-redis-benchmark -h 127.0.0.1 -p 6379 -n 50000 -c 100
-
-# 测试特定命令的吞吐
-redis-benchmark -t SET,GET,LPUSH -n 100000
-
-# 以管道方式压测（模拟批量请求）
-redis-benchmark -n 100000 -P 10
-
-# 集群模式压测
-redis-benchmark --cluster -h 127.0.0.1 -p 7000
-
-# 测试某个 key 的内存占用
-redis-cli MEMORY USAGE mykey
-redis-cli MEMORY STATS</code></pre>
-
-        <p>输出示例（不同硬件差异较大，以下仅做参考）：</p>
-
-        <pre><code>====== SET ======
-  100000 requests completed in 1.24 seconds
-  100 parallel clients
-  3 bytes payload
-  keep alive: 1
-
-99.88% <= 0.5 milliseconds
-100.00% <= 1 milliseconds
-80580.29 requests per second
-
-====== GET ======
-  100000 requests completed in 1.22 seconds
-  100 parallel clients
-  3 bytes payload
-  keep alive: 1
-
-99.92% <= 0.5 milliseconds
-100.00% <= 1 milliseconds
-82015.36 requests per second</code></pre>
-
-        <p>值得关注的几个参数组合：</p>
-
-        <ul>
-            <li><strong>payload size 的影响：</strong>使用 <code>-d 1024</code> 测试 1KB 的 value 和默认 3 字节相比，QPS 可能下降 20-30%，因为网络带宽和内存分配成了瓶颈。</li>
-            <li><strong>Pipeline 深度：</strong><code>-P 10</code> 开启管道可以大幅提升吞吐（5~10 倍），但这不代表生产环境的真实 QPS——生产环境的请求是随机到达的，没法无限制 pipeline。</li>
-            <li><strong>集群压测：</strong><code>--cluster</code> 模式下会先通过 CLUSTER SLOTS 获取槽位分布，然后对每个节点分别建连压测。</li>
-        </ul>
-
-        <h2>perf 与火焰图</h2>
-
-        <p>在诊断 CPU 相关的性能问题时，INFO 和 slowlog 只能告诉我们"命令慢"，而 <code>perf</code> 配合火焰图能告诉我们"哪个函数吃了最多的 CPU"。这是源码级问题定位的大杀器。</p>
-
-        <p>基本流程如下：</p>
-
-        <pre><code># 第一步：采集 Redis 进程的 CPU 样本
-# -a: 采集所有 CPU
-# -p: 指定 pid
-# -g: 记录调用栈（关键！）
-perf record -a -g -p `pgrep redis-server` -- sleep 30
-
-# 第二步：生成 perf 报告
-perf report -g --stdio
-
-# 第三步：生成火焰图
-# 需要从 GitHub 下载 FlameGraph 工具集
-git clone https://github.com/brendangregg/FlameGraph.git
-
-# 生成 folded stack 格式
-perf script &gt; out.perf
-./FlameGraph/stackcollapse-perf.pl out.perf &gt; out.folded
-./FlameGraph/flamegraph.pl out.folded &gt; redis-cpu.svg</code></pre>
-
-        <p>用浏览器打开生成的 <code>redis-cpu.svg</code> 文件，你会看到从底向上的调用栈火焰图。每个方块的宽度代表该函数占用的 CPU 样本比例。重点关注那些"又宽又靠上"的函数——它们就是 hot function。</p>
-
-        <p>结合我们学过的源码，常见的 CPU 热点包括：</p>
-        <ul>
-            <li><code>dictFind / dictAdd</code>：如果占比较高，说明有大量的 key 操作，同时注意观察 <code>dictRehash</code> 是否也占用了显著比例——如果是，说明 rehash 正在进行中（可考虑增大 <code>hash-max-ziplist-entries</code> 或合理规划 key 数量）。</li>
-            <li><code>rdbSave / rdbWriteRaw</code>：BGSAVE 导致的 CPU 飙升，应该错开持久化窗口。</li>
-            <li><code>aeProcessEvents / aeApiPoll</code>：占比高说明事件循环空转少，CPU 利用率高——这是好事，如果占比低反而说明大部分时间在 epoll_wait 空闲等待。</li>
-            <li><code>expireCycle / activeExpireCycle</code>：过期键集中清理占 CPU，说明键的 TTL 集中相同，可能导致延迟抖动。</li>
-            <li><code>zmalloc / jemalloc 相关函数</code>：如果内存分配函数占总 CPU 超过 10%，说明数据操作的密集程度很高，或者分配器的参数需要调整。</li>
-        </ul>
-
-        <div class="highlight">
-            <strong>实战排查案例：</strong>某游戏后端 Redis CPU 持续 90% 以上，slowlog 没有明显慢查询，perf 火焰图显示 <code>expireCycle</code> 占用 47% 的 CPU。翻看源码 <code>expire.c</code> 的 <code>activeExpireCycle()</code> 后发现，Redis 每次只扫描 20 个过期键，但如果有大量过期键集中在同一秒过期（业务方给 100 万个 key 设置了完全相同的 TTL），Redis 就需要不断轮询，导致 CPU 飚高。最终将 TTL 进行随机化处理（在原始 TTL 上加上一个随机偏移），问题立即解决。
-        </div>
-
-        <h2>诊断思维框架</h2>
-
-        <p>工具再多，没有系统化的诊断思维也等于零。这里分享一个我总结的"问题定位三步法"：</p>
-
-        <h3>第一步：现象 → 指标</h3>
-        <p>把用户反馈的"感觉比较慢"转化为可测量的指标。具体来说：用 INFO 采集基线数据，用 slowlog 看是否有个别命令极慢，用 latency monitor 看是否有周期性毛刺。这一步的目标是把"慢"精确到某个维度：是 CPU 不够？是 IO 卡顿？还是内存有问题？</p>
-
-        <h3>第二步：指标 → 模块</h3>
-        <p>确定了问题维度后，对照源码中的对应模块进行定位。比如 CPU 高的问题，用 perf 看热点函数是哪个模块的；IO 卡顿的问题，用 strace 看文件系统和网络系统调用的耗时分布；内存异常的问题，用 MEMORY STATS 分析数据结构层面的内存分布。</p>
-
-        <h3>第三步：模块 → 根因</h3>
-        <p>定位到具体模块后，深入源码阅读对应的逻辑分支。比如发现是 <code>freeMemoryIfNeeded()</code> 占用了大量 CPU，就要阅读 <code>evict.c</code> 中内存淘汰算法的执行路径——是 LRU 采样的开销，还是逐出大量 key 导致的写操作连锁反应？</p>
-
-        <p>在问题分类上，我们需要区分两类常见的性能故障：</p>
-
-        <ul>
-            <li><strong>延迟类问题：</strong>表现为 P99 剧增、命令响应慢。根因往往是单次操作的耗时过长（COW、THP、大 key 操作、fork 阻塞）。定位工具：latency monitor → slowlog → perf。</li>
-            <li><strong>吞吐类问题：</strong>表现为 QPS 下降、CPU 打满。根因往往是某些操作过于频繁（过期键密集清理、rehash 抖动、断线重连风暴）。定位工具：INFO stats → MEMORY STATS → redis-benchmark 对照。</li>
-        </ul>
-
-        <p>最后，画一张诊断决策流程图给自己贴在墙上：</p>
-
-        <pre><code>用户反馈"Redis 慢"
-        │
-        ▼
-   INFO 采集全量指标
-        │
-        ├─ CPU 异常高 ──────────────────► perf 火焰图 → 热点函数分析
-        │
-        ├─ 延迟抖动 ──── LATENCY DOCTOR ──► LATENCY GRAPH 看周期性
-        │       │                              │
-        │       │                         有周期性 → cron 类（expire/rehash/aof）
-        │       │                         无规律 → 系统类（swap/THP/sched）
-        │
-        ├─ 命令级慢 ──── SLOWLOG ────────► 计算密集 vs IO 密集
-        │
-        ├─ 内存异常 ──── MEMORY STATS ────► used_memory_rss / mem_fragmentation_ratio
-        │                                          │
-        │                                    碎片高 → jemalloc 调优
-        │                                    RSS &lt; used → 已 swap！
-        │
-        └─ 连接异常 ──── CLIENT LIST ──────► 输出缓冲区膨胀 → client-kill</code></pre>
-
-        <p>有了这套工具武器库，你已经不再是那个半夜被叫醒后只会 restart 的运维新人了。下一章，让我们直接进入战场——生产环境真实踩坑指南，看看那些教科书不会教你的"血泪史"。</p>
-
-        <div class="footer-nav">
-            <a href="22.html">← 上一章</a>
-            <a href="index.html">📖 返回目录</a>
-            <a href="24.html">下一章 →</a>
-        </div>
-    </div>
-</div>
-</div>
-</body>
-</html>
+<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="按 Redis 7.2.4 固定源码梳理性能诊断工具链：INFO 各 section、latency-monitor 与命令级延迟跟踪、SLOWLOG 采样点、redis-benchmark 与 perf 火焰图的定位边界。">
+<title>第 23 章｜性能诊断工具链：从 INFO 到火焰图 · Redis 源码解析</title>
+<style>*,*::before,*::after{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,"PingFang SC",sans-serif;line-height:1.78;color:#1d3438;background:#fdfcf8;overflow-wrap:anywhere}svg,img{max-width:100%;height:auto}pre{overflow-x:auto;max-width:100%;white-space:pre-wrap;word-break:break-word}.table-scroll{overflow-x:auto;max-width:100%}table{border-collapse:collapse;width:100%}</style>
+<link rel="stylesheet" href="../assets/css/site.css"></head><body>
+<a class="skip-link" href="#main">跳至正文</a>
+<header class="site-head"><div class="site-head-inner"><a class="brand" href="../index.html"><span class="brand-mark">R</span>Redis / 源码图谱</a><nav class="site-links" aria-label="主要导航"><a href="../index.html#chapters">全部章节</a><a href="#sources">参考源码</a><a href="https://github.com/1998x-stack/redis-source-analysis-tutorial">GitHub</a></nav></div></header>
+<div class="article-layout">
+<aside class="article-aside" aria-label="本章目录"><a href="../index.html">← 返回首页</a><details open><summary>本章阅读路径</summary><nav class="toc-links" aria-label="正文目录">
+<a href="#problem">先说清楚问题：指标从哪里来</a>
+<a href="#info">INFO：一把抓的全量快照</a>
+<a href="#latency">延迟监控：事件采样与命令级分位</a>
+<a href="#slowlog">SLOWLOG：谁被计入了执行时间</a>
+<a href="#benchmark">redis-benchmark：可重复的基准</a>
+<a href="#profile">perf 与火焰图：热点在函数，不在命令</a>
+<a href="#framework">把工具串成一条排查路径</a>
+<a href="#experiment">对照实验：制造一条慢日志</a>
+<a href="#limits">把工具能回答与不能回答的分开</a>
+<a href="#sources">固定版本参考</a>
+</nav></details></aside>
+<main class="article-main" id="main"><article>
+<header class="article-header"><p class="eyebrow">Chapter 23 / Redis 7.2.4 Source Anatomy</p><h1>性能诊断工具链：从 INFO 到火焰图</h1><p class="lede">有了副本与集群，下一步是把“变慢了”拆成可回答的问题。本章按 Redis 7.2.4 固定源码梳理观测手段：<code>INFO</code> 各 section、<code>latency-monitor</code> 与命令级分位、<code>SLOWLOG</code> 的采样点、<code>redis-benchmark</code>，以及为什么 <code>perf</code> 火焰图回答的是另一个层面的问题。</p><p class="reading-meta">固定源代码 Redis 7.2.4 · 问题 → 图解 → 源码 → 实验 → 边界</p></header>
+<section id="problem" aria-labelledby="h-problem"><h2 id="h-problem">先说清楚问题：指标从哪里来</h2>
+<p>“Redis 变慢了”不是一个能直接回答的问题。它至少包含三个不同层面的提问：<strong>服务端统计到了什么</strong>（计数器与耗时）、<strong>单条命令或某个事件慢了多久</strong>（采样与日志）、<strong>CPU 时间花在哪个函数上</strong>（操作系统级剖析）。Redis 自带的工具回答前两个层面，第三个层面通常要借操作系统的 <code>perf</code>。</p>
+<p>本章按“信息由谁产生”来组织，而不是按工具名罗列：<code>INFO</code> 来自运行期的实时计数，<code>SLOWLOG</code> 与 latency monitor 来自命令执行路径上埋的采样点，<code>redis-benchmark</code> 是外部压测器，<code>perf</code> 采样的是进程的调用栈。分清来源，才知道某个数字到底在描述谁。</p>
+<figure class="figure"><svg role="img" aria-labelledby="fig23-1-t" aria-describedby="fig23-1-d" viewBox="0 0 720 210" xmlns="http://www.w3.org/2000/svg"><title id="fig23-1-t">三层观测与对应的 Redis 手段</title><desc id="fig23-1-d">最上层是 INFO 的全局计数，中间是 SLOWLOG、latency monitor 与命令分位的执行期采样，最下层是操作系统 perf 的函数级剖析；越往下越接近“时间到底花在哪”。</desc><rect width="720" height="210" rx="16" fill="#f6fbf9"/><g font-family="system-ui,sans-serif" font-size="13" text-anchor="middle"><rect x="40" y="26" width="640" height="46" rx="10" fill="#e1f4f0" stroke="#167e80"/><text x="360" y="46" fill="#1d3438">全局计数层 · INFO / INFO commandstats / INFO latencystats</text><text x="360" y="64" font-size="12" fill="#52666b">回答“整体多少、哪个命令平均更贵”</text><rect x="40" y="84" width="640" height="46" rx="10" fill="#efecf9" stroke="#6654a7"/><text x="360" y="104" fill="#1d3438">执行期采样层 · SLOWLOG / LATENCY / latency-tracking</text><text x="360" y="122" font-size="12" fill="#52666b">回答“哪一次、哪一段时间超了阈值”</text><rect x="40" y="142" width="640" height="46" rx="10" fill="#fcf0e9" stroke="#c9664a"/><text x="360" y="162" fill="#1d3438">进程剖析层 · 操作系统 perf + 火焰图</text><text x="360" y="180" font-size="12" fill="#52666b">回答“CPU 时间落在哪个函数”</text></g></svg><figcaption>图 1 · 三层观测各自回答不同的问题。诊断的顺序通常是从上往下收窄：先看全局计数，再定位具体命令或时间段，最后才把进程交给剖析器。</figcaption></figure>
+</section>
+<section id="info" aria-labelledby="h-info"><h2 id="h-info">INFO：一把抓的全量快照</h2>
+<p><code>INFO</code> 的实现在 <code>server.c</code> 的 <code>genRedisInfoString(const char *section)</code>。它支持按 section 取：<code>server</code>、<code>clients</code>、<code>memory</code>、<code>persistence</code>、<code>stats</code>、<code>replication</code>、<code>cpu</code>、<code>modules</code>、<code>errorstats</code>、<code>cluster</code>、<code>keyspace</code>，以及两个与诊断强相关的 <code>commandstats</code> 和 <code>latencystats</code>。不带参数时返回的是一份大而全的快照，不是一次原子快照。</p>
+<p>几个专门为定位服务设计的 section 值得先记住：<code>commandstats</code> 给出每个命令的 <code>calls</code>、总 <code>usec</code>、<code>usec_per_call</code> 以及 <code>rejected_calls</code>/<code>failed_calls</code>；<code>latencystats</code> 则在启用 <code>latency-tracking</code> 时，按命令给出分位耗时（如 <code>p50</code>、<code>p99</code>、<code>p99.9</code>，具体分位由 <code>latency-tracking-info-percentiles</code> 配置）。平均值会被极值拖平，分位数才能看出“多数请求是否真的变慢了”。</p>
+<p>需要提醒的是：<code>INFO</code> 的计数是累加的，多数计数不会在运行中自动归零。<code>CONFIG RESETSTAT</code> 可以重置统计（包括 commandstats、errorstats 等），适合在“改动前后对比”场景下先清零再观察。不要把一次 <code>INFO</code> 的瞬时数字当作稳态结论，也不要把不同 Redis 版本的字段名当成一一对应。</p>
+</section>
+<section id="latency" aria-labelledby="h-latency"><h2 id="h-latency">延迟监控：事件采样与命令级分位</h2>
+<p>Redis 内置的延迟监控在 <code>latency.c</code>，核心是 <code>latencyAddSampleIfNeeded(const char *event, ...)</code>：当一次事件的耗时超过 <code>latency-monitor-threshold</code>（毫秒，<code>0</code> 表示关闭）时，把这次采样记入 <code>LATENCY HISTORY</code>。它跟踪的是不同类型的事件（如 <code>command</code>、<code>fork</code>、过期/淘汰相关周期等），而不是只盯着某条命令。</p>
+<p>面向命令的延迟可以用 <code>LATENCY DOCTOR</code> 生成一段人类可读的诊断文本，用 <code>LATENCY LATEST</code> 看每个事件最近一次与最大的采样。它回答的是“哪些事件超过过阈值、最近一次多慢”，<strong>不是</strong>全局延迟直方图。要在不开阈值的情况下看命令级分位，则用 7.0 起引入的 latency tracking：<code>CONFIG SET latency-tracking yes</code> 后，<code>INFO latencystats</code> 按命令给出分位。</p>
+<p>两者的采样点都在命令执行路径上，所以它们只覆盖“服务端执行”这一段。客户端到服务端的网络往返、排队、操作系统调度不在其中。把它当成端到端延迟会系统性低估。</p>
+<figure class="figure"><svg role="img" aria-labelledby="fig23-2-t" aria-describedby="fig23-2-d" viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg"><title id="fig23-2-t">执行期采样点落在 call() 内部</title><desc id="fig23-2-d">call() 从开始到命令函数返回的区间内测量耗时，并据此决定是否推入 SLOWLOG 与 latency 采样；回复写入输出缓冲发生在测量区间之后，不计入这些统计。</desc><rect width="720" height="200" rx="16" fill="#f6fbf9"/><g font-family="system-ui,sans-serif" font-size="13"><rect x="24" y="70" width="150" height="50" rx="8" fill="#e1f4f0" stroke="#167e80"/><text x="99" y="100" text-anchor="middle" fill="#1d3438">call() 开始</text><rect x="200" y="70" width="220" height="50" rx="8" fill="#efecf9" stroke="#6654a7"/><text x="310" y="93" text-anchor="middle" fill="#1d3438">cmd-&gt;proc(c)</text><text x="310" y="111" text-anchor="middle" font-size="12" fill="#52666b">被测量的执行区间</text><rect x="446" y="70" width="250" height="50" rx="8" fill="#fcf0e9" stroke="#c9664a"/><text x="571" y="93" text-anchor="middle" fill="#1d3438">采样与判定</text><text x="571" y="111" text-anchor="middle" font-size="12" fill="#52666b">SLOWLOG / latency / 传播</text><g stroke="#167e80" stroke-width="2.5" fill="none"><path d="M174 95 H200"/><path d="M420 95 H446"/></g><text x="440" y="140" text-anchor="middle" font-size="12" fill="#a5462c">回复写入输出缓冲在此之后 → 不计入上述耗时</text></g></svg><figcaption>图 2 · 测量区间的边界。命令函数执行完毕到回复真正发出之间还隔着一层输出缓冲，因此 <code>SLOWLOG</code> 与 latency 数字描述的是“执行”而非“客户端看到的往返”。</figcaption></figure>
+</section>
+<section id="slowlog" aria-labelledby="h-slowlog"><h2 id="h-slowlog">SLOWLOG：谁被计入了执行时间</h2>
+<p>慢日志实现在 <code>slowlog.c</code>，入口是 <code>slowlogPushEntryIfNeeded(client *c, robj **argv, int argc, long long duration)</code>。它在命令执行后被调用：只有耗时超过 <code>slowlog-log-slower-than</code>（微秒，默认 <code>10000</code> 即 10 ms）时才记录一条，条数受 <code>slowlog-max-len</code>（默认 <code>128</code>）限制，超出后旧条目被丢弃。</p>
+<p>几个容易被误读的点：阈值单位是<strong>微秒</strong>；慢日志记录的是命令执行时间，不包含网络往返与输出发送；它只保留最近若干条，不是完整审计；把阈值设为 <code>0</code> 会让每条命令都被记录，仅适合临时观察。用 <code>SLOWLOG GET</code> 能拿到条目（含自增 <code>id</code>、<code>timestamp</code>、<code>duration</code>、命令参数等），<code>SLOWLOG RESET</code> 清空，<code>SLOWLOG LEN</code> 看当前条数。</p>
+<p>与 <code>latency</code> 事件的分工：<code>SLOWLOG</code> 回答“哪条命令执行超了阈值”；latency monitor 回答“哪类事件超过阈值”。排查命令级问题时前者更直接，但它无法告诉你命令内部到底卡在分配、脚本还是数据结构遍历上——那是剖析器的活。</p>
+</section>
+<section id="benchmark" aria-labelledby="h-benchmark"><h2 id="h-benchmark">redis-benchmark：可重复的基准</h2>
+<p><code>redis-benchmark</code> 是随源码一起构建的独立压测工具（<code>src/redis-benchmark.c</code>），不是 Redis 服务端内部组件。它用多个并发连接向目标实例发包，默认命令集包含 <code>SET</code>/<code>GET</code>/<code>INCR</code>/<code>LPUSH</code> 等，并可用 <code>-t</code> 选择、<code>-n</code> 指定请求数、<code>-c</code> 指定并发连接数、<code>-q</code> 只输出摘要。</p>
+<p>它产出的是“客户端视角的吞吐与平均延迟”，与前面的服务端侧采样互补，但必须读对：结果取决于客户端机器性能、网络、数据大小与是否 pipeline，不能当成服务端能力的绝对上限。若要测真实往返延迟分布，可用 <code>redis-cli --latency</code>；要做能对比的前后测，必须固定命令、数据量、并发与客户端环境，并避免把压测跑在与服务同一台弱机上。</p>
+<pre><code># 一次性、低并发的基本对照（仅示例参数，不代表任何性能结论）：
+./src/redis-benchmark -p 6390 -n 20000 -c 20 -t set,get -q
+./src/redis-cli -p 6390 --latency</code></pre>
+</section>
+<section id="profile" aria-labelledby="h-profile"><h2 id="h-profile">perf 与火焰图：热点在函数，不在命令</h2>
+<p>当 <code>INFO</code> 显示 CPU 高但无法从命令名看出原因时，需要看进程内部。Linux 上常用 <code>perf</code> 对 Redis 进程采样调用栈，再生成火焰图（flame graph）：横轴是调用栈膨胀，越宽表示采样命中越多。它回答的是“<strong>CPU 时间落在哪些函数</strong>”，比如 <code>dictFind</code>、<code>malloc</code>、协议解析或复制缓冲区。</p>
+<p>这里要区分清楚：<code>INFO</code>/<code>SLOWLOG</code> 是 Redis 自己埋点的统计，而 <code>perf</code> 是操作系统对进程的采样，二者数据来源不同。火焰图需要合适的符号表与内核权限；在容器或受限环境里可能采不到有意义的栈，此时应写“未验证”而不是强行归因。火焰图也难以反映 I/O 等待与锁竞争，这些是另一类工具（如 <code>strace</code>、off-CPU 分析）的领域。</p>
+</section>
+<section id="framework" aria-labelledby="h-framework"><h2 id="h-framework">把工具串成一条排查路径</h2>
+<p>工具本身不会给出结论，排查的价值在于把一个模糊现象逐层收窄。一条可复用的路径是：先用 <code>INFO</code> 确定现象属于哪一类（CPU、内存、连接、持久化），再决定往下看命令级还是事件级采样，最后才上剖析器。</p>
+<figure class="figure"><svg role="img" aria-labelledby="fig23-3-t" aria-describedby="fig23-3-d" viewBox="0 0 720 250" xmlns="http://www.w3.org/2000/svg"><title id="fig23-3-t">从现象到工具的分支路径</title><desc id="fig23-3-d">CPU 异常高指向 perf 火焰图；延迟拖动先用 LATENCY DOCTOR 看周期性，再看 SLOWLOG；内存异常看 MEMORY STATS 与碎片率；连接异常看 CLIENT LIST 输出缓冲。</desc><rect width="720" height="250" rx="16" fill="#f6fbf9"/><g font-family="system-ui,sans-serif" font-size="13" text-anchor="middle"><rect x="270" y="22" width="180" height="40" rx="8" fill="#e1f4f0" stroke="#167e80"/><text x="360" y="47" fill="#1d3438">INFO（现象分流）</text><g fill="#efecf9" stroke="#6654a7"><rect x="20" y="100" width="150" height="42" rx="8"/><rect x="190" y="100" width="150" height="42" rx="8"/><rect x="360" y="100" width="150" height="42" rx="8"/><rect x="530" y="100" width="170" height="42" rx="8"/></g><text x="95" y="126" fill="#1d3438">CPU 高</text><text x="265" y="126" fill="#1d3438">延迟拖动</text><text x="435" y="126" fill="#1d3438">内存异常</text><text x="615" y="126" fill="#1d3438">连接异常</text><g fill="#fcf0e9" stroke="#c9664a"><rect x="20" y="176" width="150" height="46" rx="8"/><rect x="190" y="176" width="150" height="46" rx="8"/><rect x="360" y="176" width="150" height="46" rx="8"/><rect x="530" y="176" width="170" height="46" rx="8"/></g><text x="95" y="195" fill="#1d3438" font-size="12">perf 火焰图</text><text x="95" y="213" fill="#52666b" font-size="11">热点函数</text><text x="265" y="195" fill="#1d3438" font-size="12">LATENCY / SLOWLOG</text><text x="265" y="213" fill="#52666b" font-size="11">周期性 vs 单次</text><text x="435" y="195" fill="#1d3438" font-size="12">MEMORY STATS</text><text x="435" y="213" fill="#52666b" font-size="11">碎片 / RSS</text><text x="615" y="195" fill="#1d3438" font-size="12">CLIENT LIST</text><text x="615" y="213" fill="#52666b" font-size="11">输出缓冲</text><g stroke="#167e80" stroke-width="2" fill="none"><path d="M360 62 V80 H95 V100"/><path d="M360 62 V80 H265 V100"/><path d="M360 62 V80 H435 V100"/><path d="M360 62 V80 H615 V100"/><path d="M95 142 V176"/><path d="M265 142 V176"/><path d="M435 142 V176"/><path d="M615 142 V176"/></g></g></svg><figcaption>图 3 · 现象分流图。它不保证每一步都能定位到根因，但能避免“CPU 高就直接重启”这类跳步。分支代表阅读顺序，不代表工具只能用在这些场景。</figcaption></figure>
+<p>注意惰性诊断的陷阱：用 <code>DEBUG SLEEP</code> 或压测人为地把某个指标拉高，得到的只是“这个工具怎么用”，不是“我的线上为什么慢”。真实排查需要在真实负载下对照改动前后。</p>
+</section>
+<section id="experiment" aria-labelledby="h-experiment"><h2 id="h-experiment">对照实验：制造一条慢日志</h2>
+<p>下面在临时端口上启动一个无持久化、隔离的实例，主动把慢日志阈值调到最低，发一条普通命令并读回条目。命令适用于类 Unix shell。</p>
+<pre><code>./src/redis-server --port 6390 --save &quot;&quot; --appendonly no
+# 另一个终端：
+./src/redis-cli -p 6390 CONFIG SET slowlog-log-slower-than 0
+./src/redis-cli -p 6390 SLOWLOG RESET
+./src/redis-cli -p 6390 SET diag:1 hello
+./src/redis-cli -p 6390 SLOWLOG GET 1
+./src/redis-cli -p 6390 SLOWLOG LEN
+./src/redis-cli -p 6390 INFO commandstats | grep -A3 cmdstat_set
+./src/redis-cli -p 6390 INFO latencystats | head
+# 实验结束：
+./src/redis-cli -p 6390 SHUTDOWN NOSAVE</code></pre>
+<p>预期观察：阈值设为 <code>0</code> 后，几乎每条命令都会出现在 <code>SLOWLOG GET</code> 里（因为条件变成了“耗时 &gt;= 0”）；条目带自增 <code>id</code>、时间戳、以微秒计的 <code>duration</code> 与参数列表。去掉 <code>slowlog-log-slower-than 0</code> 后回到默认 10 ms，普通命令就不再被记录。<code>INFO commandstats</code> 里的 <code>usec_per_call</code> 是累计平均，不要用它单独判定分位。</p>
+<div class="note">上方 <code>--save &quot;&quot;</code> 与 <code>--appendonly no</code> 只用于临时实验，切勿当作生产模板。<code>DEBUG</code> 类子命令在 7.x 中可能默认被禁用，需要显式开启 <code>enable-debug-command</code>，所以本实验用真实命令而非 <code>DEBUG SLEEP</code> 触发慢日志。</div>
+<div class="simulator" data-diag-demo><label for="sim-diag">选择一种现象，观察建议的下一步</label><select id="sim-diag"><option value="cpu">CPU 持续很高</option><option value="latency">延迟周期性抖动</option><option value="mem">内存增长异常</option><option value="conn">连接/输出缓冲膨胀</option></select><div data-output class="sim-output" role="status" aria-live="polite"></div><p class="muted" style="font-size:.79rem;margin-bottom:0">交互仅用于复习“先看哪个 section”的阅读顺序，不代替在真实实例上的对照测量。</p></div>
+</section>
+<section id="limits" aria-labelledby="h-limits"><h2 id="h-limits">把工具能回答与不能回答的分开</h2>
+<ul><li><strong>服务端时间 ≠ 端到端时间</strong>：<code>SLOWLOG</code>、latency monitor、<code>INFO</code> 的耗时都从服务端执行角度度量，不含网络与客户端处理。</li><li><strong>平均值会骗人</strong>：<code>usec_per_call</code> 是累计平均，需配合 <code>latencystats</code> 分位才能看出尾部。</li><li><strong>采样不是全量</strong>：慢日志与 latency 采样都是阈值触发的有限保留，不能当作完整审计日志。</li><li><strong>INFO 非原子快照</strong>：大型实例上各字段在不同时刻采集，跨字段相减可能引入噪声。</li><li><strong>火焰图有前提</strong>：需要符号、内核权限与采样时长；采不到时只能写“未验证”。</li><li><strong>版本边界</strong>：<code>latencystats</code> 与 <code>latency-tracking</code> 属于 7.0 起的能力；本章函数名与配置名均针对 <code>redis/redis@7.2.4</code>，与 Redis 8 不完全对应。</li></ul>
+<p>下一章把这些工具用在具体故障上：大 key、热 key、fork 抖动与内存膨胀到底怎么发生、又该先看哪个指标。</p>
+</section>
+<section class="sources" id="sources" aria-labelledby="h-sources"><h2 id="h-sources">源码与参考</h2><p>以下链接固定到 <code>redis/redis@7.2.4</code>。</p><ol><li><a href="https://github.com/redis/redis/blob/7.2.4/src/server.c">server.c：genRedisInfoString 与 call() 中的耗时统计与采样</a></li><li><a href="https://github.com/redis/redis/blob/7.2.4/src/slowlog.c">slowlog.c：slowlogPushEntryIfNeeded 与 SLOWLOG 命令</a></li><li><a href="https://github.com/redis/redis/blob/7.2.4/src/latency.c">latency.c：latencyAddSampleIfNeeded 与 LATENCY 命令</a></li><li><a href="https://github.com/redis/redis/blob/7.2.4/src/redis-benchmark.c">redis-benchmark.c：独立压测客户端</a></li><li><a href="https://github.com/redis/redis/blob/7.2.4/redis.conf">redis.conf：slowlog-*、latency-tracking* 与 latency-monitor-threshold 配置说明</a></li></ol></section>
+<nav class="pager" aria-label="前后章节"><a href="22.html">← 第 22 章</a><a href="24.html">第 24 章 →</a></nav>
+</article></main></div>
+<footer class="footer"><div class="max"><a href="../index.html">返回课程主页</a></div></footer>
+<script src="../assets/js/third-article.js" defer></script>
+<script>(()=>{"use strict";const map={cpu:"先看 INFO cpu 与 INFO commandstats，确认是单类命令还是全局；再用 perf 采样看热点函数。高 CPU 不等于必顶扩容。",latency:"先用 LATENCY DOCTOR/LATEST 看是否周期性；有周期多与 serverCron 类任务相关，无规律再查系统层（swap、调度、THP）。",mem:"看 INFO memory 的 used_memory 与 used_memory_rss、mem_fragmentation_ratio；RSS 明显低于 used 时要警惕已发生 swap。",conn:"用 CLIENT LIST 与 INFO clients 看输出缓冲（omem）是否持续增长；必要时结合 client-output-buffer-limit 排查。"};const box=document.querySelector("[data-diag-demo]");if(box){const s=box.querySelector("select"),o=box.querySelector("[data-output]");const up=()=>{o.textContent=map[s.value]||"";};s.addEventListener("change",up);up();}})();</script>
+</body></html>
