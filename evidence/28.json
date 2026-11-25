@@ -1,0 +1,18 @@
+{
+  "chapter": "28",
+  "source_version": "redis/redis@7.2.4",
+  "files": [
+    "src/server.c",
+    "src/networking.c",
+    "src/ae.c"
+  ],
+  "symbols": [
+    "aeMain",
+    "processCommand",
+    "processInputBuffer",
+    "aeCreateFileEvent",
+    "aeProcessEvents"
+  ],
+  "methods": "Source symbols and implementation paths inspected in pinned upstream GitHub (redis/redis@7.2.4); diagrams newly authored inline as SVG.",
+  "runtime_test": "static validate.py pass; chromium browser_check.py executed for chapter 28 — desktop 1440 / tablet 768 / mobile 390 / narrow 360 all pass (no JS errors, no horizontal overflow, no external requests). Reports in the run log qa/ch28/ (not committed to the repo)."
+}

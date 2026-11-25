@@ -1,0 +1,21 @@
+{
+  "chapter": "24",
+  "source_version": "redis/redis@7.2.4",
+  "files": [
+    "src/db.c",
+    "src/lazyfree.c",
+    "src/bio.c",
+    "src/rdb.c",
+    "src/server.c"
+  ],
+  "symbols": [
+    "delCommand",
+    "unlinkCommand",
+    "delGenericCommand",
+    "lazyfreeFreeObjectFromBioThread",
+    "BIO_LAZY_FREE",
+    "rdbSaveBackground"
+  ],
+  "methods": "Source symbols and implementation paths inspected in pinned upstream GitHub (redis/redis@7.2.4); diagrams newly authored inline as SVG.",
+  "runtime_test": "static validate.py pass; chromium browser_check.py executed for chapter 24 — desktop 1440 / tablet 768 / mobile 390 / narrow 360 all pass (no JS errors, no horizontal overflow, no external requests). Reports in the run log qa/ch24/ (not committed to the repo)."
+}

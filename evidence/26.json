@@ -1,0 +1,21 @@
+{
+  "chapter": "26",
+  "source_version": "redis/redis@7.2.4",
+  "files": [
+    "src/script.c",
+    "src/script_lua.c",
+    "src/multi.c",
+    "src/server.h"
+  ],
+  "symbols": [
+    "multiCommand",
+    "queueMultiCommand",
+    "execCommand",
+    "watchCommand",
+    "luaCallFunction",
+    "CLIENT_MULTI",
+    "CLIENT_DIRTY_CAS"
+  ],
+  "methods": "Source symbols and implementation paths inspected in pinned upstream GitHub (redis/redis@7.2.4); diagrams newly authored inline as SVG.",
+  "runtime_test": "static validate.py pass; chromium browser_check.py executed for chapter 26 — desktop 1440 / tablet 768 / mobile 390 / narrow 360 all pass (no JS errors, no horizontal overflow, no external requests). Reports in the run log qa/ch26/ (not committed to the repo)."
+}

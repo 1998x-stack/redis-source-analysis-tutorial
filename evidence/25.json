@@ -1,0 +1,19 @@
+{
+  "chapter": "25",
+  "source_version": "redis/redis@7.2.4",
+  "files": [
+    "src/debug.c",
+    "src/server.h",
+    "src/server.c",
+    "src/evict.c"
+  ],
+  "symbols": [
+    "processCommand",
+    "call",
+    "freeMemoryIfNeeded",
+    "serverAssert",
+    "serverPanic"
+  ],
+  "methods": "Source symbols and implementation paths inspected in pinned upstream GitHub (redis/redis@7.2.4); diagrams newly authored inline as SVG.",
+  "runtime_test": "static validate.py pass; chromium browser_check.py executed for chapter 25 — desktop 1440 / tablet 768 / mobile 390 / narrow 360 all pass (no JS errors, no horizontal overflow, no external requests). Reports in the run log qa/ch25/ (not committed to the repo)."
+}

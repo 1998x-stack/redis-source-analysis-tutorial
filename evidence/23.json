@@ -1,0 +1,17 @@
+{
+  "chapter": "23",
+  "source_version": "redis/redis@7.2.4",
+  "files": [
+    "src/server.c",
+    "src/slowlog.c",
+    "src/latency.c"
+  ],
+  "symbols": [
+    "genRedisInfoString",
+    "call",
+    "slowlogPushEntryIfNeeded",
+    "latencyAddSampleIfNeeded"
+  ],
+  "methods": "Source symbols and implementation paths inspected in pinned upstream GitHub (redis/redis@7.2.4); diagrams newly authored inline as SVG.",
+  "runtime_test": "static validate.py pass; chromium browser_check.py executed for chapter 23 — desktop 1440 / tablet 768 / mobile 390 / narrow 360 all pass (no JS errors, no horizontal overflow, no external requests). Reports in the run log qa/ch23/ (not committed to the repo)."
+}
