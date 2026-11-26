@@ -42,6 +42,7 @@ if (server.aof_state == AOF_ON) server.aof_buf = sdscatlen(server.aof_buf, buf, 
 <div class="table-scroll" role="region" tabindex="0" aria-label="appendfsync 策略对照"><table><thead><tr><th scope="col">策略</th><th scope="col">写入时机</th><th scope="col">fsync 时机</th><th scope="col">安全性 / 代价</th></tr></thead><tbody><tr><td><code>always</code></td><td>每条命令后</td><td>每次立即 <code>fsync</code></td><td>最多丢 1 条命令；同步开销最大，吞吐最低</td></tr><tr><td><code>everysec</code>（默认）</td><td>每秒批量</td><td>后台线程每秒一次</td><td>最多丢约 1 秒数据；吞吐接近无 AOF</td></tr><tr><td><code>no</code></td><td>无固定间隔</td><td>由内核脏页回写决定</td><td>可能丢更多；吞吐最高，安全性最低</td></tr></tbody></table></div>
 <p>一个容易被忽略的阻塞点：在 <code>everysec</code> 下，如果上一次由后台线程发起的 <code>fsync</code> 仍未完成，下一次 <code>flushAppendOnlyFile()</code> 会等待它，否则缓冲区会持续膨胀。当磁盘 I/O 被其他进程争抢时，这个等待会变成主线程的秒级毛刺。因此 <code>everysec</code> 的“最多丢 1 秒”是安全性上的上限，“不会丢响应”却不是承诺。</p>
 <p class="note">表里的相对开销是定性描述。具体的延迟与吞吐倍数强依赖硬件、内核与负载，不同环境不可直接比较，因此不给出固定百分比。</p>
+<div class="simulator" data-aof-demo><label for="sim-aof">选择 appendfsync 策略，看刷盘时机与风险</label><select id="sim-aof"><option value="always">always</option><option value="everysec">everysec（默认）</option><option value="no">no</option></select><div data-output class="sim-output" role="status" aria-live="polite"></div><p class="muted" style="font-size:.79rem;margin-bottom:0">交互按本章的刷盘时机给出定性关系，具体延迟与吞吐依赖硬件和负载。</p></div>
 </section>
 <section id="rewrite" aria-labelledby="h-rewrite"><h2 id="h-rewrite">AOF 重写：用内存状态生成最小命令集</h2>
 <p>AOF 是追加写入的，同一个键统计被改动一百万次，文件里就有一百万条命令。重寫的目标是<strong>基于当前内存中的数据状态，生成一套最小命令集</strong>，而不是重放历史。7.2.4 的相关函数是 <code>rewriteAppendOnlyFile(char *filename)</code> 与它内部使用的 <code>rewriteAppendOnlyFileRio(rio *aof)</code>，后台触发入口为 <code>rewriteAppendOnlyFileBackground()</code>。</p>
@@ -79,4 +80,9 @@ ls -l /tmp/aof-demo/appendonlydir
 </article></main></div>
 <footer class="footer"><div class="max"><a href="../index.html">返回课程主页</a></div></footer>
 <script src="../assets/js/third-article.js" defer></script>
+<script>(()=>{"use strict";const map={
+always:"每条命令后立即 flushAppendOnlyFile → write + fsync：安全性最高（最多丢 1 条命令），同步开销最大、吞吐最低。",
+everysec:"每秒批量 write，fsync 由后台线程每秒发起：最多丢约 1 秒数据。注意若上一次后台 fsync 未完成，下一次 flushAppendOnlyFile 会等待它，磁盘争抢时可能变成主线程毛刺。",
+no:"不做固定间隔的 fsync，由内核脏页回写决定落盘时机：吞吐最高、安全性最低，可能丢更多数据。"};
+const box=document.querySelector("[data-aof-demo]");if(box){const s=box.querySelector("select"),o=box.querySelector("[data-output]");const u=()=>{o.textContent=map[s.value]||"";};s.addEventListener("change",u);u();}})();</script>
 </body></html>
