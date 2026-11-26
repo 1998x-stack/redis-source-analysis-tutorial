@@ -36,6 +36,7 @@ socket_target = (repl_diskless_sync || req &amp; SLAVE_REQ_RDB_MASK)
 <p>由于不再有文件长度可依据，无盘传输用个“EOF 标记”结束：<code>rdbSaveRioWithEOFMark()</code> 在流末尾写一个空 RDB 以标明结束，而副本必须声明了 <code>capa eof</code> 才能识别。主库还会用 <code>repl-diskless-sync-delay</code>（默认 5 秒）等一段时间，让更多副本赶上同一次 fork，而不是来一个就 fork 一次。</p>
 <p>副本侧也有对应开关 <code>repl-diskless-load</code>，可取 <code>disabled</code>（先落临时文件）、<code>on-empty-db</code>（本库为空时直接从流加载）、<code>swapdb</code>（在内存中解析并切换）。这是一个需要谨慎的选项：它影响加载期间的内存峰值。</p>
 <figure class="figure"><svg role="img" aria-labelledby="fig21-1-t" aria-describedby="fig21-1-d" viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg"><title id="fig21-1-t">磁盘复制与无盘复制的数据路径</title><desc id="fig21-1-d">磁盘模式经子进程写 RDB 文件再读取发送，涉及两次磁盘 IO；无盘模式子进程直接把 RDB 流写向副本 socket，并以 EOF 标记结束。</desc><rect width="720" height="200" rx="16" fill="#f6fbf9"/><g font-family="system-ui,sans-serif" font-size="12" text-anchor="middle"><rect x="24" y="24" width="672" height="60" rx="10" fill="#e1f4f0" stroke="#167e80"/><text x="100" y="49" fill="#1d3438">磁盘模式</text><text x="400" y="49" fill="#52666b">子进程 rdbSaveBackground → RDB 文件 → 读文件 → 发副本</text><text x="400" y="70" fill="#a5462c">两次磁盘 IO，磁盘易成瓶颈</text><rect x="24" y="100" width="672" height="76" rx="10" fill="#fcf0e9" stroke="#c9664a"/><text x="115" y="126" fill="#1d3438">无盘模式</text><text x="400" y="126" fill="#52666b">子进程 rdbSaveToSlavesSockets → 直接写副本 socket</text><text x="400" y="148" fill="#52666b">以 EOF 标记结束；副本需 capa eof</text><text x="400" y="166" fill="#a5462c">省磁盘 IO，但网络带宽更集中</text></g></svg><figcaption>图 1 · 两条路径的取舍。无盘复制省掉磁盘，但把压力集中到网络；带宽受限时未必更好。</figcaption></figure>
+<div class="simulator" data-repl-demo2><label for="sim-repl2">选择全量同步配置，看走哪条数据路径</label><select id="sim-repl2"><option value="disk">repl-diskless-sync no（磁盘模式）</option><option value="diskless">repl-diskless-sync yes，副本支持 capa eof</option><option value="noeof">开启无盘，但副本未声明 capa eof</option><option value="minrepl">min-replicas-to-write 未满足</option><option value="wait">WAIT numreplicas timeout</option></select><div data-output class="sim-output" role="status" aria-live="polite"></div><p class="muted" style="font-size:.79rem;margin-bottom:0">交互按本章的函数分支与安全阀给出定性结果，实际路径还受 mincapa 与积压限制影响。</p></div>
 </section>
 <section id="cascade" aria-labelledby="h-cascade"><h2 id="h-cascade">级联复制：把扇出改成链式</h2>
 <p>如果主库直接服务 30 个副本，一次全量同步就要 30 份带宽与多次 fork。级联复制让副本自己也可以有副本：主库只服务少量一级副本，一级副本再向下服务二级副本，形成一条链。配置方法就是让某个副本再执行一次 <code>REPLICAOF &lt;上级副本 IP&gt; &lt;端口&gt;</code>——对它而言，上级副本就是它眼中的“主库”，复制逻辑完全一致。</p>
@@ -83,4 +84,11 @@ sleep 11
 </article></main></div>
 <footer class="footer"><div class="max"><a href="../index.html">返回课程主页</a></div></footer>
 <script src="../assets/js/third-article.js" defer></script>
+<script>(()=>{"use strict";const map={
+disk:"rdbSaveBackground() 先写 RDB 文件，再从磁盘读出交给副本：属于“写 + 读”两次磁盘 IO。",
+diskless:"startBgsaveForReplication() 判定 socket_target 为真，fork 子进程调 rdbSaveToSlavesSockets() 把 RDB 直接写入副本 socket；末尾用 rdbSaveRioWithEOFMark() 写空 RDB 作为 EOF 标记。",
+noeof:"socket_target 条件还要求 mincapa & SLAVE_CAPA_EOF；副本未声明 capa eof 时该分支不成立，会退回磁盘模式（落盘再发送）。",
+minrepl:"min-replicas-to-write 大于 0 且健康（lag 不超过 min-replicas-max-lag）副本不足时，processCommand 会回 -NOREPLICAS 拒写：牺牲可用性降低丢数据风险，但不等于不丢。",
+wait:"WAIT numreplicas timeout 在单次调用上阻塞至多 timeout 毫秒，返回已确认该偏移量的副本数；它是同步点而不是持久性承诺，也不能替代 AOF 或事务。"};
+const box=document.querySelector("[data-repl-demo2]");if(box){const s=box.querySelector("select"),o=box.querySelector("[data-output]");const u=()=>{o.textContent=map[s.value]||"";};s.addEventListener("change",u);u();}})();</script>
 </body></html>
