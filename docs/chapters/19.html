@@ -63,6 +63,7 @@ return 1;</code></pre>
 <p>关键实现选择：Redis 不维护精确的全局 LRU/LFU 链表（那会让每次访问都改动多个指针），而是<strong>抽样近似</strong>。<code>evictionPoolPopulate(dbid, sampledict, keydict, pool)</code> 从候选字典随机抽取 <code>maxmemory-samples</code>（默认 5）个键，估算它们的空闲时间或使用频次，把较优者放进淘汰池，再从池中淘汰。样本越多越接近真实 LRU，代价是更高的 CPU。</p>
 <p><code>volatile-*</code> 只从带 TTL 的键里选；如果一个都没带 TTL，就无法淘汰，行为退回到类似 <code>noeviction</code>——这是个常见的配置陷阱。被淘汰的键同样会产生一条 <code>DEL</code> 传播给 AOF 与副本。</p>
 <figure class="figure"><svg role="img" aria-labelledby="fig19-3-t" aria-describedby="fig19-3-d" viewBox="0 0 720 200" xmlns="http://www.w3.org/2000/svg"><title id="fig19-3-t">淘汰池的抽样近似流程</title><desc id="fig19-3-d">performEvictions 从候选字典随机抽 maxmemory-samples 个键，估算空闲时间后放入淘汰池，再淘汰池中最优的键并传播 DEL。</desc><rect width="720" height="200" rx="16" fill="#f6fbf9"/><g font-family="system-ui,sans-serif" font-size="12" text-anchor="middle"><rect x="24" y="70" width="150" height="58" rx="10" fill="#e1f4f0" stroke="#167e80"/><text x="99" y="94" fill="#1d3438">候选字典</text><text x="99" y="113" fill="#52666b">allkeys / volatile</text><rect x="200" y="70" width="170" height="58" rx="10" fill="#efecf9"/><text x="285" y="94" fill="#1d3438">随机抽 N 个</text><text x="285" y="113" fill="#52666b">maxmemory-samples</text><rect x="396" y="70" width="150" height="58" rx="10" fill="#fcf0e9" stroke="#c9664a"/><text x="471" y="94" fill="#1d3438">淘汰池</text><text x="471" y="113" fill="#52666b">保留较优候选</text><rect x="572" y="70" width="124" height="58" rx="10" fill="#fff" stroke="#6654a7"/><text x="634" y="94" fill="#1d3438">淘汰 +</text><text x="634" y="113" fill="#52666b">传播 DEL</text><g stroke="#167e80" stroke-width="3" fill="none"><path d="M174 99 H200"/><path d="M370 99 H396"/><path d="M546 99 H572"/></g><text x="360" y="170" fill="#52666b">近似而非精确：看的是一个“估计的空闲时间”，不是全局排序</text></g></svg><figcaption>图 3 · 淘汰是采样近似。因此同一份数据在不同负载下可能选出不同的牺牲品，不必期待“精确的 LRU”。</figcaption></figure>
+<div class="simulator" data-evict-demo><label for="sim-evict">选择 maxmemory-policy，看候选集与行为</label><select id="sim-evict"><option value="noeviction">noeviction</option><option value="allkeys-lru">allkeys-lru</option><option value="volatile-lru">volatile-lru</option><option value="volatile-ttl">volatile-ttl</option><option value="volatile-empty">volatile-* 但没有任何带 TTL 的键</option></select><div data-output class="sim-output" role="status" aria-live="polite"></div><p class="muted" style="font-size:.79rem;margin-bottom:0">交互按本章的策略表给出定性关系，不代表真实运行时选出的具体键。</p></div>
 </section>
 <section id="lru-lfu" aria-labelledby="h-lru-lfu"><h2 id="h-lru-lfu">LRU 近似与 LFU 对数计数器</h2>
 <p>两者都复用对象上的同一块 24 位空间（<code>robj</code> 的 <code>lru</code> 字段），含义随策略不同：</p>
@@ -93,4 +94,11 @@ return 1;</code></pre>
 </article></main></div>
 <footer class="footer"><div class="max"><a href="../index.html">返回课程主页</a></div></footer>
 <script src="../assets/js/third-article.js" defer></script>
+<script>(()=>{"use strict";const map={
+noeviction:"不淘汰任何键；内存超限时，带 CMD_DENYOOM 的写命令会被 getMaxmemoryState 判为 EVICT_FAIL 并回 -OOM。",
+"allkeys-lru":"候选集是全部键；evictionPoolPopulate 随机抽样 maxmemory-samples 个键，估算空闲时间、把较优者放进淘汰池，属抽样近似而非精确 LRU。",
+"volatile-lru":"候选集只是带 TTL 的键；在没有带 TTL 键时无法从中选人，行为会退回到类似 noeviction。",
+"volatile-ttl":"候选集只是带 TTL 的键，优先淘汰剩余存活时间最短（最接近过期）的键；同样受抽样近似影响。",
+"volatile-empty":"volatile-* 只从 expires 字典里选键。若一个带 TTL 的键也没有，就无法淘汰，写入会退回到 -OOM 拒绝——这是常见配置陷阱。"};
+const box=document.querySelector("[data-evict-demo]");if(box){const s=box.querySelector("select"),o=box.querySelector("[data-output]");const u=()=>{o.textContent=map[s.value]||"";};s.addEventListener("change",u);u();}})();</script>
 </body></html>
