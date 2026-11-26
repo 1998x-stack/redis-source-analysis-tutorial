@@ -12,4 +12,10 @@ a{color:var(--accent);text-underline-offset:3px}a:hover{color:#0d5b60}a:focus-vi
 @media(max-width:600px){body{font-size:16px;line-height:1.76}.site-head-inner{flex-wrap:wrap}.site-links{gap:.9rem}.hero{padding-top:2.8rem}.chapter-grid{grid-template-columns:1fr}.statline{gap:1.5rem}.article-layout{padding-top:1.3rem}.article-main section{margin:3.1rem 0}.article-main pre{padding:.9rem}.figure{padding:.55rem;margin-left:-.1rem;margin-right:-.1rem}.article-header h1{font-size:2.15rem}.simulator{padding:1rem}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{transition:none!important;animation:none!important}}
 @media print{body{background:white;color:black}.site-head,.article-aside,.pager,.hero-actions,.catalog-tools{display:none!important}.article-layout{display:block;padding:0}.article-main{max-width:100%}.article-main section{break-inside:avoid-page}.figure{box-shadow:none;break-inside:avoid}.article-main pre{white-space:pre-wrap;color:#111;background:#f0f0f0}.simulator{break-inside:avoid}}
+.math-inline{font-family:"Cambria Math","STIX Two Math","Latin Modern Math",serif}
+.math-equation{max-width:100%;min-width:0;margin:1.6rem 0}
+.math-scroll{max-width:100%;min-width:0;overflow-x:auto;overflow-y:hidden}
+.math-scroll:focus-visible{outline:3px solid #147f80;outline-offset:2px}
+.math-scroll math[display="block"]{width:max-content;min-width:100%;font-size:1.15rem}
+@media print{.math-scroll{overflow:visible}.math-scroll math[display="block"]{font-size:1rem}}
 .chapter-card[hidden]{display:none!important}
