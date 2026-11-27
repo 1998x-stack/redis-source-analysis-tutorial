@@ -22,10 +22,21 @@ class Tags(HTMLParser):
 def check_file(path, errors):
     text=path.read_text(encoding="utf-8")
     parser=Tags();parser.feed(text)
-    if path.name != "index.html" and path.parent.name == "chapters" and int(path.stem)<=15:
+    if path.name != "index.html" and path.parent.name == "chapters" and int(path.stem)<=25:
         if parser.h1!=1:errors.append(f"{path}: expected exactly one h1; got {parser.h1}")
         for required in ("<main","<article","<section","<figure"):
             if required not in text: errors.append(f"{path}: missing {required}")
+    if path.parent.name == "chapters" and path.stem in ("21", "22", "23", "24", "25"):
+        if text.count('<figure class="figure diagram-pan">') != 3:
+            errors.append(f"{path}: fifth-batch page needs exactly 3 narrative diagrams")
+        if text.count('data-fifth-demo=') != 1:
+            errors.append(f"{path}: fifth-batch page needs one interactive model")
+        if text.count('<section id=') < 8:
+            errors.append(f"{path}: insufficient independent article sections")
+        if text.count("https://github.com/redis/redis/blob/7.2.4/") < 3:
+            errors.append(f"{path}: missing pinned upstream source references")
+        if '<script src="../assets/js/fifth-article.js"' not in text:
+            errors.append(f"{path}: missing fifth-article enhancement")
     for tag,uri in parser.refs:
         parsed=urlparse(uri)
         if parsed.scheme or parsed.netloc or uri.startswith(("#","mailto:","tel:","data:","javascript:")): continue

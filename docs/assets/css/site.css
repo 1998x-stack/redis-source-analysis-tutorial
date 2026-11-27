@@ -19,3 +19,7 @@ a{color:var(--accent);text-underline-offset:3px}a:hover{color:#0d5b60}a:focus-vi
 .math-scroll math[display="block"]{width:max-content;min-width:100%;font-size:1.15rem}
 @media print{.math-scroll{overflow:visible}.math-scroll math[display="block"]{font-size:1rem}}
 .chapter-card[hidden]{display:none!important}
+
+/* Zoomable source-mechanism figures for chapters 21–25. */
+.figure.diagram-pan{overflow-x:auto;scrollbar-color:#8fa9a3 #e9f0eb}
+@media(max-width:800px){.figure.diagram-pan img{min-width:760px;max-width:none}.figure.diagram-pan figcaption{min-width:680px}}
